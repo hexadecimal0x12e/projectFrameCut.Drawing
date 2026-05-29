@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="projectFrameCut.Drawing.Base/projectFrameCut.Drawing.Base.csproj" />
+  <Project Path="projectFrameCut.Drawing.Processing/projectFrameCut.Drawing.Processing.csproj" Id="888efc41-bd6f-4504-853d-13a7b8b711eb" />
+  <Project Path="projectFrameCut.Drawing.Test.App/projectFrameCut.Drawing.Test.App.csproj" Id="de8f51fd-3968-4a96-86a0-2e8ec9d4db06" />
+  <Project Path="projectFrameCut.Drawing.Tests/projectFrameCut.Drawing.Tests.csproj" />
+</Solution>
