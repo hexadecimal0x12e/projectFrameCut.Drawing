@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"d:\\\\code\\\\projectFrameCut.Drawing\" -Recurse -Filter \"*.csproj\")",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(git *)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)"
+    ]
+  }
+}

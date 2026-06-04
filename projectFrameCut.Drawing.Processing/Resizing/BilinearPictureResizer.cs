@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Processing.Resizing
 {
-    public class CPUBilinearPictureResizer : IPictureResizer
+    public class BilinearPictureResizer : IPictureResizer
     {
         public IPicture<ushort> Resize(IPicture<ushort> source, int targetWidth, int targetHeight, bool preserveAspect)
         {

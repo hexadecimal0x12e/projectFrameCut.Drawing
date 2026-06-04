@@ -16,7 +16,7 @@ namespace projectFrameCut.Drawing.Processing.Resizing
         /// A default picture resizer using CPU and bilinear interpolation.
         /// You can implement your own resizer and set it to this property to use it in these extension methods.
         /// </summary>
-        public static IPictureResizer Default = new CPUBilinearPictureResizer();
+        public static IPictureResizer Default = new BilinearPictureResizer();
 
         extension<T>(ProcessableIPictureContext<T> ctx) where T : IPicture
         {

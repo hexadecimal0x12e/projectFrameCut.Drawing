@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\projectFrameCut.Drawing.Base\projectFrameCut.Drawing.Base.csproj" />
+    <ProjectReference Include="..\projectFrameCut.Drawing.Effect\projectFrameCut.Drawing.Effect.csproj" />
     <ProjectReference Include="..\projectFrameCut.Drawing.Processing\projectFrameCut.Drawing.Processing.csproj" />
   </ItemGroup>
 
