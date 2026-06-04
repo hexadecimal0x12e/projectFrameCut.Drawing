@@ -20,6 +20,7 @@
     <ProjectReference Include="..\projectFrameCut.Drawing.Effect\projectFrameCut.Drawing.Effect.csproj" />
     <ProjectReference Include="..\projectFrameCut.Drawing.Processing\projectFrameCut.Drawing.Processing.csproj" />
     <ProjectReference Include="..\projectFrameCut.Drawing.Text\projectFrameCut.Drawing.Text.csproj" />
+    <ProjectReference Include="..\projectFrameCut.Drawing.Vector\projectFrameCut.Drawing.Vector.csproj" />
   </ItemGroup>
 
 </Project>

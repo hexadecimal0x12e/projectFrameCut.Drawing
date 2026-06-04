@@ -7,6 +7,10 @@
     "Font": {
       "commandName": "Project",
       "commandLineArgs": "font"
+    },
+    "VectPicture": {
+      "commandName": "Project",
+      "commandLineArgs": "svg"
     }
   }
 }

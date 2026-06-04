@@ -4,6 +4,8 @@ using projectFrameCut.Drawing.Processing.Cropping;
 using projectFrameCut.Drawing.Processing.Resizing;
 using projectFrameCut.Drawing.Text.FontHelper;
 using projectFrameCut.Drawing.Text.FontHelper.Table;
+using projectFrameCut.Drawing.Vector;
+using projectFrameCut.Drawing.Vector.ImportExport;
 using System.Text.Json;
 
 namespace projectFrameCut.Drawing.Test.App
@@ -119,6 +121,58 @@ namespace projectFrameCut.Drawing.Test.App
                             using var font = FontFace.Load(path);
                             ShowFontInfo(font, userStr);
                         }
+                        return;
+                    }
+                case "svg":
+                    {
+                        // Demonstrate the ShapeCanvasElement fluent API
+                        var canvas = new VectorPicture();
+                        canvas.Elements.AddRange(
+                            [
+                                ShapeCanvasElement.DrawRectangle(0.5f, 0.2f)
+                                    .WithStroke(ushort.MaxValue, 0, 0, 1f, 2f)    // red stroke
+                                    .WithFill(ushort.MaxValue, 0, 0, 0.3f)         // red fill, 30%
+                                    .WithPosition(0.1f, 0.1f),
+
+                                ShapeCanvasElement.DrawEllipse(0.15f, 0.15f)
+                                    .WithFill(0, 0, ushort.MaxValue, 0.4f)         // blue fill, 40%
+                                    .WithStroke(0, 0, ushort.MaxValue, 1f, 1.5f)   // blue stroke
+                                    .WithPosition(0.7f, 0.3f),
+
+                                ShapeCanvasElement.DrawPolygon(
+                                        new Point(0.1f, 0.1f),
+                                        new Point(0.5f, 0.1f),
+                                        new Point(0.3f, 0.5f))
+                                    .WithStroke(0, ushort.MaxValue, 0, 1f, 1f)     // green stroke
+                                    .WithLayer(1),
+
+                                ShapeCanvasElement.DrawLine(0f, 0f, 0.3f, 0.3f)
+                                    .WithStroke(0, 0, 0, 1f, 3f)                   // black thick line
+                                    .WithPosition(0.5f, 0.5f),
+                            ]);
+
+                        Console.WriteLine($"Canvas created with {canvas.Elements.Count} elements.");
+                        Console.WriteLine("Elements:");
+                        foreach (var el in canvas.Elements)
+                            Console.WriteLine($"  [{el.LayerIndex}] ({el.RelativeX:F2}, {el.RelativeY:F2}) → {el.Draw().Length} segment(s)");
+
+                        // 导出为 SVG
+                        const int svgWidth = 800, svgHeight = 600;
+                        var svg = SVGToVectorElement.ExportToSvg(canvas, svgWidth, svgHeight);
+                        Console.WriteLine($"SVG output ({svg.Length} chars):\n{svg}");
+
+                        // 保存到文件
+                        var outDir = AppDomain.CurrentDomain.BaseDirectory;
+                        var svgPath = Path.Combine(outDir, $"result-{DateTime.Now:yyyyMMddHHmmss}.svg");
+                        File.WriteAllText(svgPath, svg);
+                        Console.WriteLine($"SVG saved to: {svgPath}");
+
+                        // 从文件导入 SVG
+                        var fromFile = SVGToVectorElement.ImportFromFile(svgPath);
+                        Console.WriteLine($"Imported from file: {fromFile.Elements.Count} elements.");
+                        Console.WriteLine("Elements:");
+                        foreach (var el in fromFile.Elements)
+                            Console.WriteLine($"  [{el.LayerIndex}] ({el.RelativeX:F2}, {el.RelativeY:F2}) → {el.Draw().Length} segment(s)");
                         return;
                     }
             }

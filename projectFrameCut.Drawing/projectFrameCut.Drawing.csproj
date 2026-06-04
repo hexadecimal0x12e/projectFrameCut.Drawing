@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<PackageId>projectFrameCut.Drawing</PackageId>
+		<AssemblyVersion>1.0.0.0</AssemblyVersion>
+		<FileVersion>1.0.0.0</FileVersion>
+		<Authors>hexadecimal0x12e</Authors>
+		<Product>projectFrameCut Drawing library</Product>
+		<Description>projectFrameCut Drawing library</Description>
+		<AssemblyTitle>projectFrameCut Drawing library</AssemblyTitle>
+		<AssemblyDescription>projectFrameCut Drawing library</AssemblyDescription>
+		<Copyright>Copyright (c) hexadecimal0x12e 2026</Copyright>
+		<PackageProjectUrl>https://github.com/hexadecimal0x12e/projectFrameCut.Drawing</PackageProjectUrl>
+		<Title>projectFrameCut Drawing library</Title>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.45">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+		</PackageReference>
+		<ProjectReference Include="..\projectFrameCut.Drawing.Base\projectFrameCut.Drawing.Base.csproj" />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Effect\projectFrameCut.Drawing.Effect.csproj" />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Processing\projectFrameCut.Drawing.Processing.csproj" />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Text\projectFrameCut.Drawing.Text.csproj" />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Vector\projectFrameCut.Drawing.Vector.csproj" />
+	</ItemGroup>
+
+	<!-- NuGet 包 ILRepack.Lib.MSBuild.Task 已内置默认 ILRepack target，Release 时自动合并所有依赖 DLL -->
+	<!-- 如需自定义 Internalize 等设置，创建 ILRepack.targets 文件覆盖默认行为 -->
+
+</Project>

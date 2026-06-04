@@ -1,0 +1,1148 @@
+using System.Globalization;
+using System.Text;
+using System.Xml.Linq;
+using projectFrameCut.Drawing.Vector;
+
+namespace projectFrameCut.Drawing.Vector.ImportExport
+{
+    /// <summary>
+    /// Concrete <see cref="VectorCanvasElement"/> that holds pre-computed segments.
+    /// Used primarily for SVG import and programmatic canvas construction.
+    /// </summary>
+    internal class SegmentCollectionElement : VectorCanvasElement
+    {
+        private readonly VectorSegment[] _segments;
+
+        public SegmentCollectionElement(params VectorSegment[] segments)
+        {
+            _segments = segments ?? [];
+        }
+
+        public override VectorSegment[] Draw() => _segments;
+    }
+
+    /// <summary>
+    /// Provides bidirectional conversion between <see cref="VectorPicture"/> and SVG markup.
+    /// </summary>
+    public static class SVGToVectorElement
+    {
+        private static readonly CultureInfo CI = CultureInfo.InvariantCulture;
+
+        // =====================================================================
+        // Export: VectorPicture → SVG
+        // =====================================================================
+
+        /// <summary>
+        /// Export the canvas to an SVG string.
+        /// </summary>
+        /// <param name="canvas">Vector canvas to export.</param>
+        /// <param name="width">Output SVG viewport width in pixels.</param>
+        /// <param name="height">Output SVG viewport height in pixels.</param>
+        public static string ExportToSvg(VectorPicture canvas, int width, int height)
+        {
+            ArgumentNullException.ThrowIfNull(canvas);
+            if (width <= 0 || height <= 0)
+                throw new ArgumentOutOfRangeException(null,
+                    $"Canvas size must be positive. Got {width}x{height}.");
+
+            var sb = new StringBuilder();
+            sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
+            sb.Append($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {width} {height}\" width=\"{width}\" height=\"{height}\">");
+
+            foreach (var element in canvas.Elements.OrderBy(e => e.LayerIndex))
+            {
+                var ox = element.RelativeX * width;
+                var oy = element.RelativeY * height;
+                foreach (var segment in element.Draw())
+                {
+                    var tag = SegmentToSvgTag(segment, ox, oy, width, height);
+                    if (tag != null)
+                        sb.Append(tag);
+                }
+            }
+
+            sb.Append("</svg>");
+            return sb.ToString();
+        }
+
+        // ---------------------------------------------------------------
+        // Segment → SVG tag helpers
+        // ---------------------------------------------------------------
+
+        private static string? SegmentToSvgTag(VectorSegment seg, float ox, float oy, int w, int h)
+        {
+            return seg switch
+            {
+                StraightLineVectorSegment s => LineToSvg(s, ox, oy, w, h),
+                RoundedRectangleVectorSegment s => RoundedRectToSvg(s, ox, oy, w, h),
+                RectangleVectorSegment s => RectToSvg(s, ox, oy, w, h),
+                EllipseVectorSegment s => EllipseToSvg(s, ox, oy, w, h),
+                CubicBezierVectorSegment s => CubicBezierToSvg(s, ox, oy, w, h),
+                QuadraticBezierVectorSegment s => QuadraticBezierToSvg(s, ox, oy, w, h),
+                ArcVectorSegment s => ArcToSvg(s, ox, oy, w, h),
+                PolygonVectorSegment s => PolygonToSvg(s, ox, oy, w, h),
+                PolylineVectorSegment s => PolylineToSvg(s, ox, oy, w, h),
+                _ => null,
+            };
+        }
+
+        private static string CommonAttributes(VectorSegment s)
+        {
+            var sb = new StringBuilder();
+
+            if (s.FillA > 0f)
+            {
+                sb.Append($" fill=\"{ColorToHex(s.FillR, s.FillG, s.FillB)}\"");
+                if (s.FillA < 1f)
+                    sb.Append($" fill-opacity=\"{Fmt(s.FillA)}\"");
+            }
+            else
+            {
+                sb.Append(" fill=\"none\"");
+            }
+
+            if (s.Thickness > 0f && s.StrokeA > 0f)
+            {
+                sb.Append($" stroke=\"{ColorToHex(s.StrokeR, s.StrokeG, s.StrokeB)}\"");
+                sb.Append($" stroke-width=\"{Fmt(s.Thickness)}\"");
+                if (s.StrokeA < 1f)
+                    sb.Append($" stroke-opacity=\"{Fmt(s.StrokeA)}\"");
+            }
+
+            return sb.ToString();
+        }
+
+        private static float CX(float segX, float ox, int w) => ox + segX * w;
+        private static float CY(float segY, float oy, int h) => oy + segY * h;
+
+        private static string LineToSvg(StraightLineVectorSegment s, float ox, float oy, int w, int h)
+        {
+            if (s.Thickness <= 0f || s.StrokeA <= 0f)
+                return null!;
+
+            return
+                $"<line x1=\"{Fmt(CX(s.X1, ox, w))}\" y1=\"{Fmt(CY(s.Y1, oy, h))}\"" +
+                $" x2=\"{Fmt(CX(s.X2, ox, w))}\" y2=\"{Fmt(CY(s.Y2, oy, h))}\"" +
+                $" stroke=\"{ColorToHex(s.StrokeR, s.StrokeG, s.StrokeB)}\"" +
+                $" stroke-width=\"{Fmt(s.Thickness)}\"" +
+                (s.StrokeA < 1f ? $" stroke-opacity=\"{Fmt(s.StrokeA)}\"" : "") +
+                "/>";
+        }
+
+        private static string RectToSvg(RectangleVectorSegment s, float ox, float oy, int w, int h)
+        {
+            var x = CX(s.X, ox, w);
+            var y = CY(s.Y, oy, h);
+            var rw = s.Width * w;
+            var rh = s.Height * h;
+
+            return
+                $"<rect x=\"{Fmt(x)}\" y=\"{Fmt(y)}\" width=\"{Fmt(rw)}\" height=\"{Fmt(rh)}\"" +
+                CommonAttributes(s) +
+                "/>";
+        }
+
+        private static string RoundedRectToSvg(RoundedRectangleVectorSegment s, float ox, float oy, int w, int h)
+        {
+            var x = CX(s.X, ox, w);
+            var y = CY(s.Y, oy, h);
+            var rw = s.Width * w;
+            var rh = s.Height * h;
+            var radius = s.CornerRadius * Math.Min(w, h);
+
+            return
+                $"<rect x=\"{Fmt(x)}\" y=\"{Fmt(y)}\" width=\"{Fmt(rw)}\" height=\"{Fmt(rh)}\"" +
+                $" rx=\"{Fmt(radius)}\" ry=\"{Fmt(radius)}\"" +
+                CommonAttributes(s) +
+                "/>";
+        }
+
+        private static string EllipseToSvg(EllipseVectorSegment s, float ox, float oy, int w, int h)
+        {
+            var cx = CX(s.X, ox, w);
+            var cy = CY(s.Y, oy, h);
+            var rx = s.RadiusX * w;
+            var ry = s.RadiusY * h;
+
+            return
+                $"<ellipse cx=\"{Fmt(cx)}\" cy=\"{Fmt(cy)}\" rx=\"{Fmt(rx)}\" ry=\"{Fmt(ry)}\"" +
+                CommonAttributes(s) +
+                "/>";
+        }
+
+        private static string CubicBezierToSvg(CubicBezierVectorSegment s, float ox, float oy, int w, int h)
+        {
+            if (s.Thickness <= 0f || s.StrokeA <= 0f)
+                return null!;
+
+            var x1 = CX(s.X1, ox, w); var y1 = CY(s.Y1, oy, h);
+            var x2 = CX(s.X2, ox, w); var y2 = CY(s.Y2, oy, h);
+            var x3 = CX(s.X3, ox, w); var y3 = CY(s.Y3, oy, h);
+            var x4 = CX(s.X4, ox, w); var y4 = CY(s.Y4, oy, h);
+
+            return
+                $"<path d=\"M {Fmt(x1)},{Fmt(y1)} C {Fmt(x2)},{Fmt(y2)} {Fmt(x3)},{Fmt(y3)} {Fmt(x4)},{Fmt(y4)}\"" +
+                StrokeAttributes(s) +
+                "/>";
+        }
+
+        private static string QuadraticBezierToSvg(QuadraticBezierVectorSegment s, float ox, float oy, int w, int h)
+        {
+            if (s.Thickness <= 0f || s.StrokeA <= 0f)
+                return null!;
+
+            var x1 = CX(s.X1, ox, w); var y1 = CY(s.Y1, oy, h);
+            var x2 = CX(s.X2, ox, w); var y2 = CY(s.Y2, oy, h);
+            var x3 = CX(s.X3, ox, w); var y3 = CY(s.Y3, oy, h);
+
+            return
+                $"<path d=\"M {Fmt(x1)},{Fmt(y1)} Q {Fmt(x2)},{Fmt(y2)} {Fmt(x3)},{Fmt(y3)}\"" +
+                StrokeAttributes(s) +
+                "/>";
+        }
+
+        private static string ArcToSvg(ArcVectorSegment s, float ox, float oy, int w, int h)
+        {
+            if (s.Thickness <= 0f || s.StrokeA <= 0f)
+                return null!;
+
+            var cx = CX(s.X, ox, w);
+            var cy = CY(s.Y, oy, h);
+            var rx = s.RadiusX * w;
+            var ry = s.RadiusY * h;
+
+            if (rx <= 0f || ry <= 0f)
+                return null!;
+
+            // Convert center-based arc to SVG endpoint arc
+            var startAngle = s.StartAngle;
+            var endAngle = startAngle + s.SweepAngle;
+
+            var startX = cx + rx * MathF.Cos(startAngle);
+            var startY = cy + ry * MathF.Sin(startAngle);
+            var endX = cx + rx * MathF.Cos(endAngle);
+            var endY = cy + ry * MathF.Sin(endAngle);
+
+            var largeArcFlag = MathF.Abs(s.SweepAngle) > MathF.PI ? 1 : 0;
+            var sweepFlag = s.SweepAngle >= 0f ? 1 : 0;
+
+            return
+                $"<path d=\"M {Fmt(startX)},{Fmt(startY)} A {Fmt(rx)},{Fmt(ry)} 0 {largeArcFlag},{sweepFlag} {Fmt(endX)},{Fmt(endY)}\"" +
+                StrokeAttributes(s) +
+                "/>";
+        }
+
+        private static string PolygonToSvg(PolygonVectorSegment s, float ox, float oy, int w, int h)
+        {
+            if (s.Points.Length < 3)
+                return null!;
+
+            var pts = new StringBuilder();
+            foreach (var p in s.Points)
+            {
+                pts.Append(CI, $"{Fmt(CX(p.X, ox, w))},{Fmt(CY(p.Y, oy, h))} ");
+            }
+
+            return
+                $"<polygon points=\"{pts.ToString().TrimEnd()}\"" +
+                CommonAttributes(s) +
+                "/>";
+        }
+
+        private static string PolylineToSvg(PolylineVectorSegment s, float ox, float oy, int w, int h)
+        {
+            if (s.Thickness <= 0f || s.StrokeA <= 0f || s.Points.Length < 2)
+                return null!;
+
+            var pts = new StringBuilder();
+            foreach (var p in s.Points)
+            {
+                pts.Append(CI, $"{Fmt(CX(p.X, ox, w))},{Fmt(CY(p.Y, oy, h))} ");
+            }
+
+            return
+                $"<polyline points=\"{pts.ToString().TrimEnd()}\"" +
+                StrokeAttributes(s) +
+                "/>";
+        }
+
+        private static string StrokeAttributes(VectorSegment s)
+        {
+            return
+                $" fill=\"none\" stroke=\"{ColorToHex(s.StrokeR, s.StrokeG, s.StrokeB)}\"" +
+                $" stroke-width=\"{Fmt(s.Thickness)}\"" +
+                (s.StrokeA < 1f ? $" stroke-opacity=\"{Fmt(s.StrokeA)}\"" : "") +
+                "/>";
+        }
+
+        public static VectorPicture ImportFromFile(string filename) => ImportFromSvg(File.ReadAllText(filename));
+
+        /// <summary>
+        /// Parse an SVG string into a <see cref="VectorCanvas"/>.
+        /// </summary>
+        public static VectorPicture ImportFromSvg(string svgContent)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(svgContent);
+
+            var doc = XDocument.Parse(svgContent);
+            var svg = doc.Root;
+            if (svg == null || svg.Name.LocalName != "svg")
+                throw new InvalidDataException("Root element is not <svg>.");
+
+            // Determine canvas dimensions from viewBox or width/height
+            TryGetDimension(svg, "width", out var svgW, 100);
+            TryGetDimension(svg, "height", out var svgH, 100);
+
+            var vb = svg.Attribute("viewBox")?.Value;
+            float canvasW, canvasH;
+            if (vb != null)
+            {
+                var parts = vb.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 4 &&
+                    float.TryParse(parts[2], NumberStyles.Float, CI, out canvasW) &&
+                    float.TryParse(parts[3], NumberStyles.Float, CI, out canvasH) &&
+                    canvasW > 0 && canvasH > 0)
+                {
+                    // Use viewBox dimensions
+                }
+                else
+                {
+                    canvasW = svgW; canvasH = svgH;
+                }
+            }
+            else
+            {
+                canvasW = svgW; canvasH = svgH;
+            }
+
+            var result = new VectorPicture();
+            var ctx = new SvgContext();
+
+            ParseContainer(svg, result, ctx, canvasW, canvasH);
+
+            return result;
+        }
+
+        /// <summary>
+        /// Tracks inherited SVG presentation attributes during import.
+        /// </summary>
+        private sealed class SvgContext
+        {
+            public string? Fill { get; set; }
+            public string? Stroke { get; set; }
+            public float StrokeWidth { get; set; } = 1f;
+            public float Opacity { get; set; } = 1f;
+            public float FillOpacity { get; set; } = 1f;
+            public float StrokeOpacity { get; set; } = 1f;
+            public float TranslateX { get; set; }
+            public float TranslateY { get; set; }
+
+            public SvgContext Clone()
+            {
+                var c = new SvgContext
+                {
+                    Fill = Fill,
+                    Stroke = Stroke,
+                    StrokeWidth = StrokeWidth,
+                    Opacity = Opacity,
+                    FillOpacity = FillOpacity,
+                    StrokeOpacity = StrokeOpacity,
+                    TranslateX = TranslateX,
+                    TranslateY = TranslateY,
+                };
+                return c;
+            }
+        }
+
+        private static void ParseContainer(XElement parent, VectorPicture result, SvgContext ctx,
+            float canvasW, float canvasH)
+        {
+            foreach (var el in parent.Elements())
+            {
+                var local = el.Name.LocalName;
+                var childCtx = ctx.Clone();
+
+                // Inherit / override presentation attributes
+                ApplyPresentationAttributes(el, childCtx);
+
+                // Handle translate on groups
+                ApplyTransform(el, childCtx);
+
+                switch (local)
+                {
+                    case "g":
+                        ParseContainer(el, result, childCtx, canvasW, canvasH);
+                        break;
+                    case "rect":
+                        ParseRect(el, result, childCtx, canvasW, canvasH);
+                        break;
+                    case "circle":
+                        ParseCircle(el, result, childCtx, canvasW, canvasH);
+                        break;
+                    case "ellipse":
+                        ParseEllipse(el, result, childCtx, canvasW, canvasH);
+                        break;
+                    case "line":
+                        ParseLine(el, result, childCtx, canvasW, canvasH);
+                        break;
+                    case "polyline":
+                        ParsePolyline(el, result, childCtx, canvasW, canvasH);
+                        break;
+                    case "polygon":
+                        ParsePolygon(el, result, childCtx, canvasW, canvasH);
+                        break;
+                    case "path":
+                        ParsePath(el, result, childCtx, canvasW, canvasH);
+                        break;
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Presentation attributes
+        // ---------------------------------------------------------------
+
+        private static void ApplyPresentationAttributes(XElement el, SvgContext ctx)
+        {
+            // Style attribute (takes precedence over direct attributes)
+            var style = el.Attribute("style")?.Value;
+            if (style != null)
+            {
+                foreach (var part in style.Split(';', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var eq = part.IndexOf(':');
+                    if (eq < 0) continue;
+                    var name = part[..eq].Trim().ToLowerInvariant();
+                    var value = part[(eq + 1)..].Trim();
+                    ApplyStyle(name, value, ctx);
+                }
+            }
+
+            // Direct attributes (lower priority than style, which is already applied)
+            ApplyAttribute(el, "fill", v => ctx.Fill = v);
+            ApplyAttribute(el, "stroke", v => ctx.Stroke = v);
+            ApplyAttribute(el, "stroke-width", v => { if (TryParseFloat(v, out var sw)) ctx.StrokeWidth = sw; });
+            ApplyAttribute(el, "opacity", v => { if (TryParseFloat(v, out var o)) ctx.Opacity = o; });
+            ApplyAttribute(el, "fill-opacity", v => { if (TryParseFloat(v, out var fo)) ctx.FillOpacity = fo; });
+            ApplyAttribute(el, "stroke-opacity", v => { if (TryParseFloat(v, out var so)) ctx.StrokeOpacity = so; });
+        }
+
+        private static void ApplyStyle(string name, string value, SvgContext ctx)
+        {
+            switch (name)
+            {
+                case "fill": ctx.Fill = value; break;
+                case "stroke": ctx.Stroke = value; break;
+                case "stroke-width": if (TryParseFloat(value, out var sw)) ctx.StrokeWidth = sw; break;
+                case "opacity": if (TryParseFloat(value, out var o)) ctx.Opacity = o; break;
+                case "fill-opacity": if (TryParseFloat(value, out var fo)) ctx.FillOpacity = fo; break;
+                case "stroke-opacity": if (TryParseFloat(value, out var so)) ctx.StrokeOpacity = so; break;
+            }
+        }
+
+        private static void ApplyAttribute(XElement el, string name, Action<string> setter)
+        {
+            var v = el.Attribute(name)?.Value;
+            if (v != null) setter(v);
+        }
+
+        private static void ApplyTransform(XElement el, SvgContext ctx)
+        {
+            var tf = el.Attribute("transform")?.Value;
+            if (tf == null) return;
+
+            // Handle translate(tx, ty) and translate(tx)
+            if (tf.StartsWith("translate(", StringComparison.OrdinalIgnoreCase))
+            {
+                var inner = tf["translate(".Length..^1];
+                var parts = inner.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 1)
+                {
+                    TryParseFloat(parts[0], out var tx);
+                    ctx.TranslateX += tx;
+                    if (parts.Length >= 2 && TryParseFloat(parts[1], out var ty))
+                        ctx.TranslateY += ty;
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // SVG element parsers
+        // ---------------------------------------------------------------
+
+        private static void ParseRect(XElement el, VectorPicture result, SvgContext ctx,
+            float canvasW, float canvasH)
+        {
+            var x = GetDim(el, "x", canvasW);
+            var y = GetDim(el, "y", canvasH);
+            var w = GetDim(el, "width", canvasW);
+            var h = GetDim(el, "height", canvasH);
+
+            var rx = GetDim(el, "rx", Math.Min(canvasW, canvasH));
+            var ry = GetDim(el, "ry", Math.Min(canvasW, canvasH));
+
+            // SVG: if only one of rx/ry is specified, the other defaults to the same value
+            if (rx > 0f && ry <= 0f) ry = rx;
+            if (ry > 0f && rx <= 0f) rx = ry;
+
+            NormalizeFillStroke(ctx, out var fillR, out var fillG, out var fillB, out var fillA,
+                               out var strokeR, out var strokeG, out var strokeB, out var strokeA,
+                               out var thickness);
+
+            var seg = rx > 0f || ry > 0f
+                ? new RoundedRectangleVectorSegment
+                {
+                    X = (x + ctx.TranslateX) / canvasW,
+                    Y = (y + ctx.TranslateY) / canvasH,
+                    Width = w / canvasW,
+                    Height = h / canvasH,
+                    CornerRadius = (rx > 0f ? rx : ry) / Math.Min(canvasW, canvasH),
+                    FillR = fillR, FillG = fillG, FillB = fillB, FillA = fillA,
+                    StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                    Thickness = thickness,
+                }
+                : new RectangleVectorSegment
+                {
+                    X = (x + ctx.TranslateX) / canvasW,
+                    Y = (y + ctx.TranslateY) / canvasH,
+                    Width = w / canvasW,
+                    Height = h / canvasH,
+                    FillR = fillR, FillG = fillG, FillB = fillB, FillA = fillA,
+                    StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                    Thickness = thickness,
+                };
+
+            result.Elements.Add(new SegmentCollectionElement(seg));
+        }
+
+        private static void ParseCircle(XElement el, VectorPicture result, SvgContext ctx,
+            float canvasW, float canvasH)
+        {
+            var cx = GetDim(el, "cx", canvasW);
+            var cy = GetDim(el, "cy", canvasH);
+            var r = GetDim(el, "r", Math.Min(canvasW, canvasH));
+
+            NormalizeFillStroke(ctx, out var fillR, out var fillG, out var fillB, out var fillA,
+                               out var strokeR, out var strokeG, out var strokeB, out var strokeA,
+                               out var thickness);
+
+            var seg = new EllipseVectorSegment
+            {
+                X = (cx + ctx.TranslateX) / canvasW,
+                Y = (cy + ctx.TranslateY) / canvasH,
+                RadiusX = r / canvasW,
+                RadiusY = r / canvasH,
+                FillR = fillR, FillG = fillG, FillB = fillB, FillA = fillA,
+                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                Thickness = thickness,
+            };
+
+            result.Elements.Add(new SegmentCollectionElement(seg));
+        }
+
+        private static void ParseEllipse(XElement el, VectorPicture result, SvgContext ctx,
+            float canvasW, float canvasH)
+        {
+            var cx = GetDim(el, "cx", canvasW);
+            var cy = GetDim(el, "cy", canvasH);
+            var rx = GetDim(el, "rx", canvasW);
+            var ry = GetDim(el, "ry", canvasH);
+
+            NormalizeFillStroke(ctx, out var fillR, out var fillG, out var fillB, out var fillA,
+                               out var strokeR, out var strokeG, out var strokeB, out var strokeA,
+                               out var thickness);
+
+            var seg = new EllipseVectorSegment
+            {
+                X = (cx + ctx.TranslateX) / canvasW,
+                Y = (cy + ctx.TranslateY) / canvasH,
+                RadiusX = rx / canvasW,
+                RadiusY = ry / canvasH,
+                FillR = fillR, FillG = fillG, FillB = fillB, FillA = fillA,
+                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                Thickness = thickness,
+            };
+
+            result.Elements.Add(new SegmentCollectionElement(seg));
+        }
+
+        private static void ParseLine(XElement el, VectorPicture result, SvgContext ctx,
+            float canvasW, float canvasH)
+        {
+            var x1 = GetDim(el, "x1", canvasW);
+            var y1 = GetDim(el, "y1", canvasH);
+            var x2 = GetDim(el, "x2", canvasW);
+            var y2 = GetDim(el, "y2", canvasH);
+
+            NormalizeStrokeOnly(ctx, out var strokeR, out var strokeG, out var strokeB,
+                                out var strokeA, out var thickness);
+
+            if (thickness <= 0f || strokeA <= 0f) return;
+
+            var seg = new StraightLineVectorSegment
+            {
+                X1 = (x1 + ctx.TranslateX) / canvasW,
+                Y1 = (y1 + ctx.TranslateY) / canvasH,
+                X2 = (x2 + ctx.TranslateX) / canvasW,
+                Y2 = (y2 + ctx.TranslateY) / canvasH,
+                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                Thickness = thickness,
+            };
+
+            result.Elements.Add(new SegmentCollectionElement(seg));
+        }
+
+        private static void ParsePolyline(XElement el, VectorPicture result, SvgContext ctx,
+            float canvasW, float canvasH)
+        {
+            var pts = ParsePoints(el.Attribute("points")?.Value);
+            if (pts.Count < 2) return;
+
+            NormalizeStrokeOnly(ctx, out var strokeR, out var strokeG, out var strokeB,
+                                out var strokeA, out var thickness);
+
+            if (thickness <= 0f || strokeA <= 0f) return;
+
+            var ptArray = pts.Select(p => new Point(
+                (p.x + ctx.TranslateX) / canvasW,
+                (p.y + ctx.TranslateY) / canvasH
+            )).ToArray();
+
+            var seg = new PolylineVectorSegment
+            {
+                Points = ptArray,
+                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                Thickness = thickness,
+            };
+
+            result.Elements.Add(new SegmentCollectionElement(seg));
+        }
+
+        private static void ParsePolygon(XElement el, VectorPicture result, SvgContext ctx,
+            float canvasW, float canvasH)
+        {
+            var pts = ParsePoints(el.Attribute("points")?.Value);
+            if (pts.Count < 3) return;
+
+            NormalizeFillStroke(ctx, out var fillR, out var fillG, out var fillB, out var fillA,
+                               out var strokeR, out var strokeG, out var strokeB, out var strokeA,
+                               out var thickness);
+
+            var ptArray = pts.Select(p => new Point(
+                (p.x + ctx.TranslateX) / canvasW,
+                (p.y + ctx.TranslateY) / canvasH
+            )).ToArray();
+
+            var seg = new PolygonVectorSegment
+            {
+                Points = ptArray,
+                FillR = fillR, FillG = fillG, FillB = fillB, FillA = fillA,
+                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                Thickness = thickness,
+            };
+
+            result.Elements.Add(new SegmentCollectionElement(seg));
+        }
+
+        // ---------------------------------------------------------------
+        // Path parser
+        // ---------------------------------------------------------------
+
+        private static void ParsePath(XElement el, VectorPicture result, SvgContext ctx,
+            float canvasW, float canvasH)
+        {
+            var d = el.Attribute("d")?.Value;
+            if (string.IsNullOrWhiteSpace(d)) return;
+
+            NormalizeFillStroke(ctx, out var fillR, out var fillG, out var fillB, out var fillA,
+                               out var strokeR, out var strokeG, out var strokeB, out var strokeA,
+                               out var thickness);
+
+            float curX = 0, curY = 0;
+            float startX = 0, startY = 0;
+            bool hasMove = false;
+
+            var tokens = TokenizePath(d);
+            var idx = 0;
+
+            while (idx < tokens.Length)
+            {
+                var cmd = tokens[idx++][0];
+                var relative = char.IsLower(cmd);
+                var abs = char.ToUpperInvariant(cmd);
+
+                switch (abs)
+                {
+                    case 'M': // move to
+                    {
+                        var (x, y) = ReadCoordPair(tokens, ref idx);
+                        if (relative) { x += curX; y += curY; }
+                        hasMove = true;
+                        startX = curX = x; startY = curY = y;
+
+                        // Implicit line-to if more coordinates follow
+                        while (idx < tokens.Length && IsNumber(tokens[idx]))
+                        {
+                            var (lx, ly) = ReadCoordPair(tokens, ref idx);
+                            if (relative) { lx += curX; ly += curY; }
+                            var seg = new StraightLineVectorSegment
+                            {
+                                X1 = (curX + ctx.TranslateX) / canvasW,
+                                Y1 = (curY + ctx.TranslateY) / canvasH,
+                                X2 = (lx + ctx.TranslateX) / canvasW,
+                                Y2 = (ly + ctx.TranslateY) / canvasH,
+                                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB,
+                                StrokeA = strokeA, Thickness = thickness,
+                            };
+                            result.Elements.Add(new SegmentCollectionElement(seg));
+                            curX = lx; curY = ly;
+                        }
+                        break;
+                    }
+
+                    case 'L': // line to
+                    {
+                        while (idx < tokens.Length && IsNumber(tokens[idx]))
+                        {
+                            var (x, y) = ReadCoordPair(tokens, ref idx);
+                            if (relative) { x += curX; y += curY; }
+                            var seg = new StraightLineVectorSegment
+                            {
+                                X1 = (curX + ctx.TranslateX) / canvasW,
+                                Y1 = (curY + ctx.TranslateY) / canvasH,
+                                X2 = (x + ctx.TranslateX) / canvasW,
+                                Y2 = (y + ctx.TranslateY) / canvasH,
+                                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB,
+                                StrokeA = strokeA, Thickness = thickness,
+                            };
+                            result.Elements.Add(new SegmentCollectionElement(seg));
+                            curX = x; curY = y;
+                        }
+                        break;
+                    }
+
+                    case 'C': // cubic bezier
+                    {
+                        while (idx < tokens.Length && IsNumber(tokens[idx]))
+                        {
+                            var (x1, y1) = ReadCoordPair(tokens, ref idx);
+                            var (x2, y2) = ReadCoordPair(tokens, ref idx);
+                            var (x, y) = ReadCoordPair(tokens, ref idx);
+                            if (relative) { x1 += curX; y1 += curY; x2 += curX; y2 += curY; x += curX; y += curY; }
+                            var seg = new CubicBezierVectorSegment
+                            {
+                                X1 = (curX + ctx.TranslateX) / canvasW,
+                                Y1 = (curY + ctx.TranslateY) / canvasH,
+                                X2 = (x1 + ctx.TranslateX) / canvasW,
+                                Y2 = (y1 + ctx.TranslateY) / canvasH,
+                                X3 = (x2 + ctx.TranslateX) / canvasW,
+                                Y3 = (y2 + ctx.TranslateY) / canvasH,
+                                X4 = (x + ctx.TranslateX) / canvasW,
+                                Y4 = (y + ctx.TranslateY) / canvasH,
+                                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB,
+                                StrokeA = strokeA, Thickness = thickness,
+                            };
+                            result.Elements.Add(new SegmentCollectionElement(seg));
+                            curX = x; curY = y;
+                        }
+                        break;
+                    }
+
+                    case 'Q': // quadratic bezier
+                    {
+                        while (idx < tokens.Length && IsNumber(tokens[idx]))
+                        {
+                            var (x1, y1) = ReadCoordPair(tokens, ref idx);
+                            var (x, y) = ReadCoordPair(tokens, ref idx);
+                            if (relative) { x1 += curX; y1 += curY; x += curX; y += curY; }
+                            var seg = new QuadraticBezierVectorSegment
+                            {
+                                X1 = (curX + ctx.TranslateX) / canvasW,
+                                Y1 = (curY + ctx.TranslateY) / canvasH,
+                                X2 = (x1 + ctx.TranslateX) / canvasW,
+                                Y2 = (y1 + ctx.TranslateY) / canvasH,
+                                X3 = (x + ctx.TranslateX) / canvasW,
+                                Y3 = (y + ctx.TranslateY) / canvasH,
+                                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB,
+                                StrokeA = strokeA, Thickness = thickness,
+                            };
+                            result.Elements.Add(new SegmentCollectionElement(seg));
+                            curX = x; curY = y;
+                        }
+                        break;
+                    }
+
+                    case 'A': // arc
+                    {
+                        while (idx < tokens.Length && IsNumber(tokens[idx]))
+                        {
+                            var rx = ReadFloat(tokens, ref idx);
+                            var ry = ReadFloat(tokens, ref idx);
+                            var rot = ReadFloat(tokens, ref idx);
+                            var largeArc = ReadFloat(tokens, ref idx);
+                            var sweep = ReadFloat(tokens, ref idx);
+                            var (x, y) = ReadCoordPair(tokens, ref idx);
+                            if (relative) { x += curX; y += curY; }
+
+                            // Convert SVG endpoint arc to center-based ArcVectorSegment
+                            if (ArcEndpointToCenter(curX, curY, x, y, rx, ry, rot, largeArc != 0, sweep != 0,
+                                                    out var cx, out var cy, out var startAngle, out var sweepAngle))
+                            {
+                                var seg = new ArcVectorSegment
+                                {
+                                    X = (cx + ctx.TranslateX) / canvasW,
+                                    Y = (cy + ctx.TranslateY) / canvasH,
+                                    RadiusX = rx / canvasW,
+                                    RadiusY = ry / canvasH,
+                                    StartAngle = startAngle,
+                                    SweepAngle = sweepAngle,
+                                    StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB,
+                                    StrokeA = strokeA, Thickness = thickness,
+                                };
+                                result.Elements.Add(new SegmentCollectionElement(seg));
+                            }
+
+                            curX = x; curY = y;
+                        }
+                        break;
+                    }
+
+                    case 'Z': // close path
+                    {
+                        if (hasMove && (curX != startX || curY != startY))
+                        {
+                            var seg = new StraightLineVectorSegment
+                            {
+                                X1 = (curX + ctx.TranslateX) / canvasW,
+                                Y1 = (curY + ctx.TranslateY) / canvasH,
+                                X2 = (startX + ctx.TranslateX) / canvasW,
+                                Y2 = (startY + ctx.TranslateY) / canvasH,
+                                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB,
+                                StrokeA = strokeA, Thickness = thickness,
+                            };
+                            result.Elements.Add(new SegmentCollectionElement(seg));
+                        }
+                        curX = startX; curY = startY;
+                        break;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Convert SVG endpoint-based arc parameters to center-based representation.
+        /// Based on the SVG specification: https://www.w3.org/TR/SVG/implnote.html#ArcImplementationNotes
+        /// </summary>
+        private static bool ArcEndpointToCenter(
+            float x1, float y1, float x2, float y2,
+            float rx, float ry, float phi,
+            bool largeArc, bool sweep,
+            out float cx, out float cy,
+            out float startAngle, out float sweepAngle)
+        {
+            cx = cy = startAngle = sweepAngle = 0;
+
+            // Step 1: treat zero-radius as straight line
+            if (rx < 0.0001f || ry < 0.0001f)
+                return false;
+
+            // Ensure radii are non-negative
+            rx = MathF.Abs(rx);
+            ry = MathF.Abs(ry);
+
+            // Step 2: compute (x1', y1') from eq. 5.1
+            var cosPhi = MathF.Cos(phi);
+            var sinPhi = MathF.Sin(phi);
+            var dx = (x1 - x2) * 0.5f;
+            var dy = (y1 - y2) * 0.5f;
+            var x1p = cosPhi * dx + sinPhi * dy;
+            var y1p = -sinPhi * dx + cosPhi * dy;
+
+            // Step 3: ensure radii are large enough (eq. 6.6)
+            var lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
+            if (lambda > 1f)
+            {
+                var sqrtLambda = MathF.Sqrt(lambda);
+                rx *= sqrtLambda;
+                ry *= sqrtLambda;
+            }
+
+            // Step 4: compute center (cx', cy') in the transformed system (eq. 5.2)
+            var rx2 = rx * rx;
+            var ry2 = ry * ry;
+            var x1p2 = x1p * x1p;
+            var y1p2 = y1p * y1p;
+
+            var radicand = (rx2 * ry2 - rx2 * y1p2 - ry2 * x1p2) / (rx2 * y1p2 + ry2 * x1p2);
+            if (radicand < 0f) radicand = 0f; // handle numerical error
+            var coeff = MathF.Sqrt(radicand) * (largeArc == sweep ? -1f : 1f);
+
+            var cxp = coeff * (rx * y1p) / ry;
+            var cyp = coeff * (-ry * x1p) / rx;
+
+            // Step 5: rotate back to original space (eq. 5.3)
+            cx = cosPhi * cxp - sinPhi * cyp + (x1 + x2) * 0.5f;
+            cy = sinPhi * cxp + cosPhi * cyp + (y1 + y2) * 0.5f;
+
+            // Step 6: compute start angle and sweep angle (eq. 5.4, 5.5, 5.6)
+            var ux = (x1p - cxp) / rx;
+            var uy = (y1p - cyp) / ry;
+            var vx = (-x1p - cxp) / rx;
+            var vy = (-y1p - cyp) / ry;
+
+            startAngle = MathF.Atan2(uy, ux);
+
+            var dot = ux * vx + uy * vy;
+            var cross = ux * vy - uy * vx;
+            var angleDelta = MathF.Atan2(cross, dot);
+
+            // Adjust sweep
+            if (sweep && angleDelta < 0f)
+                angleDelta += 2f * MathF.PI;
+            else if (!sweep && angleDelta > 0f)
+                angleDelta -= 2f * MathF.PI;
+
+            sweepAngle = angleDelta;
+            return true;
+        }
+
+        // ---------------------------------------------------------------
+        // SVG path tokenizer
+        // ---------------------------------------------------------------
+
+        private static string[] TokenizePath(string d)
+        {
+            var list = new List<string>();
+            var i = 0;
+            while (i < d.Length)
+            {
+                if (char.IsWhiteSpace(d[i]) || d[i] == ',')
+                {
+                    i++;
+                    continue;
+                }
+
+                if (char.IsLetter(d[i]))
+                {
+                    list.Add(d[i].ToString());
+                    i++;
+                    continue;
+                }
+
+                    // Number
+                    var start = i;
+                    if (d[i] == '-' || d[i] == '+')
+                        i++;
+                    while (i < d.Length && (char.IsDigit(d[i]) || d[i] == '.'))
+                        i++;
+                    if (i < d.Length && (d[i] == 'e' || d[i] == 'E'))
+                    {
+                        i++;
+                        if (i < d.Length && (d[i] == '-' || d[i] == '+'))
+                            i++;
+                        while (i < d.Length && char.IsDigit(d[i]))
+                            i++;
+                    }
+                    list.Add(d[start..i]);
+            }
+
+            return [.. list];
+        }
+
+        private static bool IsNumber(string token) =>
+            token.Length > 0 && (char.IsDigit(token[0]) || token[0] == '-' || token[0] == '+' || token[0] == '.');
+
+        private static float ReadFloat(string[] tokens, ref int idx)
+        {
+            if (idx < tokens.Length && IsNumber(tokens[idx]))
+            {
+                var val = float.Parse(tokens[idx], NumberStyles.Float, CI);
+                idx++;
+                return val;
+            }
+            return 0f;
+        }
+
+        private static (float x, float y) ReadCoordPair(string[] tokens, ref int idx)
+        {
+            var x = ReadFloat(tokens, ref idx);
+            var y = ReadFloat(tokens, ref idx);
+            return (x, y);
+        }
+
+        // ---------------------------------------------------------------
+        // SVG points attribute parser
+        // ---------------------------------------------------------------
+
+        private static List<(float x, float y)> ParsePoints(string? points)
+        {
+            var result = new List<(float, float)>();
+            if (string.IsNullOrWhiteSpace(points)) return result;
+
+            var tokens = points.Split([' ', ',', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+            for (var i = 0; i + 1 < tokens.Length; i += 2)
+            {
+                if (float.TryParse(tokens[i], NumberStyles.Float, CI, out var x) &&
+                    float.TryParse(tokens[i + 1], NumberStyles.Float, CI, out var y))
+                {
+                    result.Add((x, y));
+                }
+            }
+
+            return result;
+        }
+
+        // ---------------------------------------------------------------
+        // Color / attribute parsing
+        // ---------------------------------------------------------------
+
+        private static void NormalizeFillStroke(SvgContext ctx,
+            out ushort fillR, out ushort fillG, out ushort fillB, out float fillA,
+            out ushort strokeR, out ushort strokeG, out ushort strokeB, out float strokeA,
+            out float thickness)
+        {
+            var fillColor = ParseColor(ctx.Fill, false);
+            if (fillColor.HasValue)
+            {
+                fillR = fillColor.Value.r; fillG = fillColor.Value.g; fillB = fillColor.Value.b;
+                fillA = ctx.Opacity * ctx.FillOpacity;
+            }
+            else
+            {
+                fillR = fillG = fillB = 0; fillA = 0f;
+            }
+
+            NormalizeStrokeOnly(ctx, out strokeR, out strokeG, out strokeB, out strokeA, out thickness);
+        }
+
+        private static void NormalizeStrokeOnly(SvgContext ctx,
+            out ushort strokeR, out ushort strokeG, out ushort strokeB, out float strokeA,
+            out float thickness)
+        {
+            var strokeColor = ParseColor(ctx.Stroke, true);
+            if (strokeColor.HasValue && ctx.StrokeWidth > 0f)
+            {
+                strokeR = strokeColor.Value.r; strokeG = strokeColor.Value.g; strokeB = strokeColor.Value.b;
+                strokeA = ctx.Opacity * ctx.StrokeOpacity;
+                thickness = ctx.StrokeWidth;
+            }
+            else
+            {
+                strokeR = strokeG = strokeB = 0; strokeA = 0f; thickness = 0f;
+            }
+        }
+
+        private static (ushort r, ushort g, ushort b)? ParseColor(string? color, bool isStroke)
+        {
+            if (string.IsNullOrWhiteSpace(color) || color == "none")
+                return null;
+
+            color = color.Trim();
+
+            // #RRGGBB
+            if (color[0] == '#' && color.Length == 7)
+            {
+                return (
+                    (ushort)(Convert.ToByte(color[1..3], 16) * 257),
+                    (ushort)(Convert.ToByte(color[3..5], 16) * 257),
+                    (ushort)(Convert.ToByte(color[5..7], 16) * 257)
+                );
+            }
+
+            // #RGB
+            if (color[0] == '#' && color.Length == 4)
+            {
+                var r = Convert.ToByte(color[1..2], 16);
+                var g = Convert.ToByte(color[2..3], 16);
+                var b = Convert.ToByte(color[3..4], 16);
+                return (
+                    (ushort)((r * 16 + r) * 257 / 15),
+                    (ushort)((g * 16 + g) * 257 / 15),
+                    (ushort)((b * 16 + b) * 257 / 15)
+                );
+            }
+
+            // Named colors — basic set
+            return NamedColor(color) ?? null;
+        }
+
+        private static (ushort r, ushort g, ushort b)? NamedColor(string name)
+        {
+            return name.ToLowerInvariant() switch
+            {
+                "black" => (0, 0, 0),
+                "white" => (ushort.MaxValue, ushort.MaxValue, ushort.MaxValue),
+                "red" => (ushort.MaxValue, 0, 0),
+                "green" => (0, ushort.MaxValue / 2, 0),
+                "blue" => (0, 0, ushort.MaxValue),
+                "yellow" => (ushort.MaxValue, ushort.MaxValue, 0),
+                "cyan" or "aqua" => (0, ushort.MaxValue, ushort.MaxValue),
+                "magenta" or "fuchsia" => (ushort.MaxValue, 0, ushort.MaxValue),
+                "silver" => (ushort.MaxValue * 3 / 4, ushort.MaxValue * 3 / 4, ushort.MaxValue * 3 / 4),
+                "gray" or "grey" => (ushort.MaxValue / 2, ushort.MaxValue / 2, ushort.MaxValue / 2),
+                "maroon" => (ushort.MaxValue / 2, 0, 0),
+                "olive" => (ushort.MaxValue / 2, ushort.MaxValue / 2, 0),
+                "purple" => (ushort.MaxValue / 2, 0, ushort.MaxValue / 2),
+                "teal" => (0, ushort.MaxValue / 2, ushort.MaxValue / 2),
+                "navy" => (0, 0, ushort.MaxValue / 2),
+                "orange" => (ushort.MaxValue, ushort.MaxValue * 2 / 3, 0),
+                "transparent" => (0, 0, 0),
+                _ => null,
+            };
+        }
+
+        /// <summary>
+        /// Try to read an SVG dimension attribute. Supports px, pt, etc. — strips units, falls back to default.
+        /// </summary>
+        private static float GetDim(XElement el, string attr, float canvasDim)
+        {
+            var v = el.Attribute(attr)?.Value;
+            if (v == null) return 0f;
+
+            // Strip common SVG units
+            if (v.EndsWith("px", StringComparison.OrdinalIgnoreCase))
+                v = v[..^2].Trim();
+            else if (v.EndsWith("pt", StringComparison.OrdinalIgnoreCase))
+                v = v[..^2].Trim();
+            else if (v.EndsWith("%", StringComparison.OrdinalIgnoreCase))
+            {
+                v = v[..^1].Trim();
+                if (float.TryParse(v, NumberStyles.Float, CI, out var pct))
+                    return pct * 0.01f * canvasDim;
+                return 0f;
+            }
+
+            return float.TryParse(v, NumberStyles.Float, CI, out var val) ? val : 0f;
+        }
+
+        private static bool TryGetDimension(XElement svg, string attr, out float value, float fallback)
+        {
+            value = fallback;
+            var v = svg.Attribute(attr)?.Value;
+            if (v == null) return false;
+
+            if (v.EndsWith("px", StringComparison.OrdinalIgnoreCase))
+                v = v[..^2].Trim();
+            else if (v.EndsWith("pt", StringComparison.OrdinalIgnoreCase))
+                v = v[..^2].Trim();
+
+            return float.TryParse(v, NumberStyles.Float, CI, out value);
+        }
+
+        private static bool TryParseFloat(string s, out float value)
+        {
+            return float.TryParse(s, NumberStyles.Float, CI, out value);
+        }
+
+        // =====================================================================
+        // Formatting helpers
+        // =====================================================================
+
+        private static string Fmt(float v) => v.ToString("0.###", CI);
+
+        private static string ColorToHex(ushort r, ushort g, ushort b)
+        {
+            return $"#{r >> 8:X2}{g >> 8:X2}{b >> 8:X2}";
+        }
+    }
+}

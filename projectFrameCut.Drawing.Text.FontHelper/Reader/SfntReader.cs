@@ -31,20 +31,18 @@ internal sealed class SfntReader : IDisposable
             case 0x74746366:  // "ttcf" — TrueType Collection
                 if (sfntOffset == 0)
                     throw new InvalidFontFileException(
-                        "TrueType Collection (.ttc) files are not supported. " +
-                        "Please use a single-font .ttf or .otf file.");
+                        "TrueType Collection (.ttc) files are not supported for 'FontFace.Load'. Please use a single-font .ttf or .otf file, or use FontCollection.");
                 // If a sub-font starts with "ttcf", the TTC is corrupt
                 goto default;
 
             case 0x774F4646:  // "wOFF" — WOFF
             case 0x774F4632:  // "wOF2" — WOFF2
                 throw new InvalidFontFileException(
-                    "WOFF/WOFF2 files are not supported. " +
-                    "Please use a .ttf or .otf file.");
+                    "WOFF/WOFF2 files are not supported. Please use a .ttf, .ttc or .otf font file.");
 
             default:
                 throw new InvalidFontFileException(
-                    "Unrecognized font format. Ensure the file is a valid .ttf or .otf file.");
+                    $"Unrecognized font file format. Ensure the file is a valid .ttf or .otf file.  (sfVersion:0x{sfVersion:X8})");
         }
 
         if (numTables == 0)

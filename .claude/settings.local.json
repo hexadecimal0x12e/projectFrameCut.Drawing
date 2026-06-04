@@ -7,7 +7,11 @@
       "Bash(dotnet build *)",
       "Bash(dotnet test *)",
       "PowerShell(dotnet build *)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(Get-ChildItem -Recurse -Directory \"d:\\\\code\\\\projectFrameCut.Drawing\")",
+      "Bash(Select-Object FullName)",
+      "Bash(Get-Content *)",
+      "Bash(dotnet clean *)"
     ]
   }
 }

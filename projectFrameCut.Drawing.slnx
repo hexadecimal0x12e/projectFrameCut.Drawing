@@ -14,4 +14,8 @@
     <Project Path="projectFrameCut.Drawing.Text.FontHelper/projectFrameCut.Drawing.Text.FontHelper.csproj" Id="5ae881d1-db91-45d8-8082-2d12b7e189cc" />
     <Project Path="projectFrameCut.Drawing.Text/projectFrameCut.Drawing.Text.csproj" Id="82d69fa3-15b0-4f1b-a589-8a5f43937bed" />
   </Folder>
+  <Folder Name="/Vector/">
+    <Project Path="projectFrameCut.Drawing.Vector/projectFrameCut.Drawing.Vector.csproj" />
+  </Folder>
+  <Project Path="projectFrameCut.Drawing/projectFrameCut.Drawing.csproj" Id="99128ddb-c971-4532-a13b-3e18282dbb99" />
 </Solution>

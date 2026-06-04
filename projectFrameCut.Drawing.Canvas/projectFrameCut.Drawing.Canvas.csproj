@@ -10,7 +10,4 @@
     <ProjectReference Include="..\projectFrameCut.Drawing.Base\projectFrameCut.Drawing.Base.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-  </ItemGroup>
-
 </Project>
