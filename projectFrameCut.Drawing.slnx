@@ -1,7 +1,17 @@
 <Solution>
-  <Project Path="projectFrameCut.Drawing.Base/projectFrameCut.Drawing.Base.csproj" />
-  <Project Path="projectFrameCut.Drawing.Effect/projectFrameCut.Drawing.Effect.csproj" Id="6ab94e90-4169-484e-befe-2c83cef906c4" />
-  <Project Path="projectFrameCut.Drawing.Processing/projectFrameCut.Drawing.Processing.csproj" Id="888efc41-bd6f-4504-853d-13a7b8b711eb" />
-  <Project Path="projectFrameCut.Drawing.Test.App/projectFrameCut.Drawing.Test.App.csproj" Id="de8f51fd-3968-4a96-86a0-2e8ec9d4db06" />
-  <Project Path="projectFrameCut.Drawing.Tests/projectFrameCut.Drawing.Tests.csproj" />
+  <Folder Name="/Base/">
+    <Project Path="projectFrameCut.Drawing.Base/projectFrameCut.Drawing.Base.csproj" />
+    <Project Path="projectFrameCut.Drawing.Processing/projectFrameCut.Drawing.Processing.csproj" Id="888efc41-bd6f-4504-853d-13a7b8b711eb" />
+  </Folder>
+  <Folder Name="/Effect/">
+    <Project Path="projectFrameCut.Drawing.Effect/projectFrameCut.Drawing.Effect.csproj" Id="6ab94e90-4169-484e-befe-2c83cef906c4" />
+  </Folder>
+  <Folder Name="/Testing/">
+    <Project Path="projectFrameCut.Drawing.Test.App/projectFrameCut.Drawing.Test.App.csproj" Id="de8f51fd-3968-4a96-86a0-2e8ec9d4db06" />
+    <Project Path="projectFrameCut.Drawing.Tests/projectFrameCut.Drawing.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Text/">
+    <Project Path="projectFrameCut.Drawing.Text.FontHelper/projectFrameCut.Drawing.Text.FontHelper.csproj" Id="5ae881d1-db91-45d8-8082-2d12b7e189cc" />
+    <Project Path="projectFrameCut.Drawing.Text/projectFrameCut.Drawing.Text.csproj" Id="82d69fa3-15b0-4f1b-a589-8a5f43937bed" />
+  </Folder>
 </Solution>

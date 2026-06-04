@@ -5,7 +5,9 @@
       "Bash(Select-Object -ExpandProperty FullName)",
       "Bash(git *)",
       "Bash(dotnet build *)",
-      "Bash(dotnet test *)"
+      "Bash(dotnet test *)",
+      "PowerShell(dotnet build *)",
+      "WebSearch"
     ]
   }
 }

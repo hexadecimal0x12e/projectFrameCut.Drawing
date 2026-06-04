@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "IPicture": {
+      "commandName": "Project",
+      "commandLineArgs": "IPicture"
+    },
+    "Font": {
+      "commandName": "Project",
+      "commandLineArgs": "font"
+    }
+  }
+}
