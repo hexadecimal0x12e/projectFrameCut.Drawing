@@ -11,6 +11,10 @@
     "VectPicture": {
       "commandName": "Project",
       "commandLineArgs": "svg"
+    },
+    "Glyph2VectPicture": {
+      "commandName": "Project",
+      "commandLineArgs": "glyph2VectPicture"
     }
   }
 }

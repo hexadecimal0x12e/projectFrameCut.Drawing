@@ -27,12 +27,17 @@ namespace projectFrameCut.Drawing.Vector
         public float RelativeY { get; set; }
         /// <summary>
         /// The index of the layer this element belongs to.
-        /// Elements with higher layer index will be drawn on top of elements with lower layer index. 
+        /// Elements with higher layer index will be drawn on top of elements with lower layer index.
         /// </summary>
         /// <remarks>
-        /// <see cref="int.MinValue"/> means the bottom layer and <see cref="int.MaxValue"/> means the top layer. 
+        /// <see cref="int.MinValue"/> means the bottom layer and <see cref="int.MaxValue"/> means the top layer.
         /// </remarks>
         public int LayerIndex { get; set; }
+
+        /// <summary>
+        /// Rotation angle in radians, applied around the element's origin.
+        /// </summary>
+        public float Rotation { get; set; }
 
         public abstract VectorSegment[] Draw();
     }

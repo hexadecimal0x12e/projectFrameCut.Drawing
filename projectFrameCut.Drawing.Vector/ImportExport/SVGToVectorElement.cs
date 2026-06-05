@@ -28,6 +28,16 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
     {
         private static readonly CultureInfo CI = CultureInfo.InvariantCulture;
 
+        /// <summary>
+        /// When <see langword="true"/>, export writes 16-bit color + float alpha as
+        /// custom XML attributes (<c>fill_projectFrameCut.Drawing.Color</c> /
+        /// <c>stroke_projectFrameCut.Drawing.Color</c>) alongside standard 8-bit
+        /// attributes. Import reads these attributes and uses them with full
+        /// priority, bypassing the lossy 8-bit colour parsing and opacity
+        /// multiplication.
+        /// </summary>
+        public static bool UsePrivateColorSavingMode { get; set; }
+
         // =====================================================================
         // Export: VectorPicture → SVG
         // =====================================================================
@@ -95,6 +105,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 sb.Append($" fill=\"{ColorToHex(s.FillR, s.FillG, s.FillB)}\"");
                 if (s.FillA < 1f)
                     sb.Append($" fill-opacity=\"{Fmt(s.FillA)}\"");
+                if (UsePrivateColorSavingMode)
+                    sb.Append($" fill_projectFrameCut.Drawing.Color=\"{PrivateColorValue(s.FillR, s.FillG, s.FillB, s.FillA)}\"");
             }
             else
             {
@@ -107,6 +119,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 sb.Append($" stroke-width=\"{Fmt(s.Thickness)}\"");
                 if (s.StrokeA < 1f)
                     sb.Append($" stroke-opacity=\"{Fmt(s.StrokeA)}\"");
+                if (UsePrivateColorSavingMode)
+                    sb.Append($" stroke_projectFrameCut.Drawing.Color=\"{PrivateColorValue(s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA)}\"");
             }
 
             return sb.ToString();
@@ -120,13 +134,17 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             if (s.Thickness <= 0f || s.StrokeA <= 0f)
                 return null!;
 
-            return
-                $"<line x1=\"{Fmt(CX(s.X1, ox, w))}\" y1=\"{Fmt(CY(s.Y1, oy, h))}\"" +
-                $" x2=\"{Fmt(CX(s.X2, ox, w))}\" y2=\"{Fmt(CY(s.Y2, oy, h))}\"" +
-                $" stroke=\"{ColorToHex(s.StrokeR, s.StrokeG, s.StrokeB)}\"" +
-                $" stroke-width=\"{Fmt(s.Thickness)}\"" +
-                (s.StrokeA < 1f ? $" stroke-opacity=\"{Fmt(s.StrokeA)}\"" : "") +
-                "/>";
+            var sb = new StringBuilder();
+            sb.Append(CI, $"<line x1=\"{Fmt(CX(s.X1, ox, w))}\" y1=\"{Fmt(CY(s.Y1, oy, h))}\"");
+            sb.Append(CI, $" x2=\"{Fmt(CX(s.X2, ox, w))}\" y2=\"{Fmt(CY(s.Y2, oy, h))}\"");
+            sb.Append(CI, $" stroke=\"{ColorToHex(s.StrokeR, s.StrokeG, s.StrokeB)}\"");
+            sb.Append(CI, $" stroke-width=\"{Fmt(s.Thickness)}\"");
+            if (s.StrokeA < 1f)
+                sb.Append(CI, $" stroke-opacity=\"{Fmt(s.StrokeA)}\"");
+            if (UsePrivateColorSavingMode)
+                sb.Append(CI, $" stroke_projectFrameCut.Drawing.Color=\"{PrivateColorValue(s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA)}\"");
+            sb.Append("/>");
+            return sb.ToString();
         }
 
         private static string RectToSvg(RectangleVectorSegment s, float ox, float oy, int w, int h)
@@ -237,16 +255,42 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             if (s.Points.Length < 3)
                 return null!;
 
+            bool hasHoles = s.Holes is { Length: > 0 };
+
+            if (hasHoles)
+            {
+                // Use <path> with evenodd fill-rule so holes punch through.
+                var d = new StringBuilder();
+                AppendContourPath(d, s.Points, ox, oy, w, h);
+                foreach (var hole in s.Holes!)
+                    AppendContourPath(d, hole, ox, oy, w, h);
+
+                return
+                    $"<path fill-rule=\"evenodd\" d=\"{d}\"" +
+                    CommonAttributes(s) +
+                    "/>";
+            }
+
             var pts = new StringBuilder();
             foreach (var p in s.Points)
-            {
                 pts.Append(CI, $"{Fmt(CX(p.X, ox, w))},{Fmt(CY(p.Y, oy, h))} ");
-            }
 
             return
                 $"<polygon points=\"{pts.ToString().TrimEnd()}\"" +
                 CommonAttributes(s) +
                 "/>";
+        }
+
+        private static void AppendContourPath(StringBuilder d, Point[] contour, float ox, float oy, int w, int h)
+        {
+            d.Append('M');
+            d.Append(CI, $"{Fmt(CX(contour[0].X, ox, w))},{Fmt(CY(contour[0].Y, oy, h))}");
+            for (int i = 1; i < contour.Length; i++)
+            {
+                d.Append(" L");
+                d.Append(CI, $"{Fmt(CX(contour[i].X, ox, w))},{Fmt(CY(contour[i].Y, oy, h))}");
+            }
+            d.Append(" Z ");
         }
 
         private static string PolylineToSvg(PolylineVectorSegment s, float ox, float oy, int w, int h)
@@ -268,11 +312,15 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
         private static string StrokeAttributes(VectorSegment s)
         {
-            return
-                $" fill=\"none\" stroke=\"{ColorToHex(s.StrokeR, s.StrokeG, s.StrokeB)}\"" +
-                $" stroke-width=\"{Fmt(s.Thickness)}\"" +
-                (s.StrokeA < 1f ? $" stroke-opacity=\"{Fmt(s.StrokeA)}\"" : "") +
-                "/>";
+            var sb = new StringBuilder();
+            sb.Append(CI, $" fill=\"none\" stroke=\"{ColorToHex(s.StrokeR, s.StrokeG, s.StrokeB)}\"");
+            sb.Append(CI, $" stroke-width=\"{Fmt(s.Thickness)}\"");
+            if (s.StrokeA < 1f)
+                sb.Append(CI, $" stroke-opacity=\"{Fmt(s.StrokeA)}\"");
+            if (UsePrivateColorSavingMode)
+                sb.Append(CI, $" stroke_projectFrameCut.Drawing.Color=\"{PrivateColorValue(s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA)}\"");
+            sb.Append("/>");
+            return sb.ToString();
         }
 
         public static VectorPicture ImportFromFile(string filename) => ImportFromSvg(File.ReadAllText(filename));
@@ -336,6 +384,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             public float StrokeOpacity { get; set; } = 1f;
             public float TranslateX { get; set; }
             public float TranslateY { get; set; }
+            public string? PrivateFillColor { get; set; }
+            public string? PrivateStrokeColor { get; set; }
 
             public SvgContext Clone()
             {
@@ -349,6 +399,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     StrokeOpacity = StrokeOpacity,
                     TranslateX = TranslateX,
                     TranslateY = TranslateY,
+                    PrivateFillColor = PrivateFillColor,
+                    PrivateStrokeColor = PrivateStrokeColor,
                 };
                 return c;
             }
@@ -425,6 +477,10 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             ApplyAttribute(el, "opacity", v => { if (TryParseFloat(v, out var o)) ctx.Opacity = o; });
             ApplyAttribute(el, "fill-opacity", v => { if (TryParseFloat(v, out var fo)) ctx.FillOpacity = fo; });
             ApplyAttribute(el, "stroke-opacity", v => { if (TryParseFloat(v, out var so)) ctx.StrokeOpacity = so; });
+
+            // Private color attributes (take complete priority if present)
+            ApplyAttribute(el, "fill_projectFrameCut.Drawing.Color", v => ctx.PrivateFillColor = v);
+            ApplyAttribute(el, "stroke_projectFrameCut.Drawing.Color", v => ctx.PrivateStrokeColor = v);
         }
 
         private static void ApplyStyle(string name, string value, SvgContext ctx)
@@ -497,8 +553,14 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     Width = w / canvasW,
                     Height = h / canvasH,
                     CornerRadius = (rx > 0f ? rx : ry) / Math.Min(canvasW, canvasH),
-                    FillR = fillR, FillG = fillG, FillB = fillB, FillA = fillA,
-                    StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                    FillR = fillR,
+                    FillG = fillG,
+                    FillB = fillB,
+                    FillA = fillA,
+                    StrokeR = strokeR,
+                    StrokeG = strokeG,
+                    StrokeB = strokeB,
+                    StrokeA = strokeA,
                     Thickness = thickness,
                 }
                 : new RectangleVectorSegment
@@ -507,8 +569,14 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     Y = (y + ctx.TranslateY) / canvasH,
                     Width = w / canvasW,
                     Height = h / canvasH,
-                    FillR = fillR, FillG = fillG, FillB = fillB, FillA = fillA,
-                    StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                    FillR = fillR,
+                    FillG = fillG,
+                    FillB = fillB,
+                    FillA = fillA,
+                    StrokeR = strokeR,
+                    StrokeG = strokeG,
+                    StrokeB = strokeB,
+                    StrokeA = strokeA,
                     Thickness = thickness,
                 };
 
@@ -532,8 +600,14 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 Y = (cy + ctx.TranslateY) / canvasH,
                 RadiusX = r / canvasW,
                 RadiusY = r / canvasH,
-                FillR = fillR, FillG = fillG, FillB = fillB, FillA = fillA,
-                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                FillR = fillR,
+                FillG = fillG,
+                FillB = fillB,
+                FillA = fillA,
+                StrokeR = strokeR,
+                StrokeG = strokeG,
+                StrokeB = strokeB,
+                StrokeA = strokeA,
                 Thickness = thickness,
             };
 
@@ -558,8 +632,14 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 Y = (cy + ctx.TranslateY) / canvasH,
                 RadiusX = rx / canvasW,
                 RadiusY = ry / canvasH,
-                FillR = fillR, FillG = fillG, FillB = fillB, FillA = fillA,
-                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                FillR = fillR,
+                FillG = fillG,
+                FillB = fillB,
+                FillA = fillA,
+                StrokeR = strokeR,
+                StrokeG = strokeG,
+                StrokeB = strokeB,
+                StrokeA = strokeA,
                 Thickness = thickness,
             };
 
@@ -585,7 +665,10 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 Y1 = (y1 + ctx.TranslateY) / canvasH,
                 X2 = (x2 + ctx.TranslateX) / canvasW,
                 Y2 = (y2 + ctx.TranslateY) / canvasH,
-                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                StrokeR = strokeR,
+                StrokeG = strokeG,
+                StrokeB = strokeB,
+                StrokeA = strokeA,
                 Thickness = thickness,
             };
 
@@ -611,7 +694,10 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             var seg = new PolylineVectorSegment
             {
                 Points = ptArray,
-                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                StrokeR = strokeR,
+                StrokeG = strokeG,
+                StrokeB = strokeB,
+                StrokeA = strokeA,
                 Thickness = thickness,
             };
 
@@ -636,8 +722,14 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             var seg = new PolygonVectorSegment
             {
                 Points = ptArray,
-                FillR = fillR, FillG = fillG, FillB = fillB, FillA = fillA,
-                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB, StrokeA = strokeA,
+                FillR = fillR,
+                FillG = fillG,
+                FillB = fillB,
+                FillA = fillA,
+                StrokeR = strokeR,
+                StrokeG = strokeG,
+                StrokeB = strokeB,
+                StrokeA = strokeA,
                 Thickness = thickness,
             };
 
@@ -674,157 +766,175 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 switch (abs)
                 {
                     case 'M': // move to
-                    {
-                        var (x, y) = ReadCoordPair(tokens, ref idx);
-                        if (relative) { x += curX; y += curY; }
-                        hasMove = true;
-                        startX = curX = x; startY = curY = y;
-
-                        // Implicit line-to if more coordinates follow
-                        while (idx < tokens.Length && IsNumber(tokens[idx]))
                         {
-                            var (lx, ly) = ReadCoordPair(tokens, ref idx);
-                            if (relative) { lx += curX; ly += curY; }
-                            var seg = new StraightLineVectorSegment
+                            var (x, y) = ReadCoordPair(tokens, ref idx);
+                            if (relative) { x += curX; y += curY; }
+                            hasMove = true;
+                            startX = curX = x; startY = curY = y;
+
+                            // Implicit line-to if more coordinates follow
+                            while (idx < tokens.Length && IsNumber(tokens[idx]))
                             {
-                                X1 = (curX + ctx.TranslateX) / canvasW,
-                                Y1 = (curY + ctx.TranslateY) / canvasH,
-                                X2 = (lx + ctx.TranslateX) / canvasW,
-                                Y2 = (ly + ctx.TranslateY) / canvasH,
-                                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB,
-                                StrokeA = strokeA, Thickness = thickness,
-                            };
-                            result.Elements.Add(new SegmentCollectionElement(seg));
-                            curX = lx; curY = ly;
+                                var (lx, ly) = ReadCoordPair(tokens, ref idx);
+                                if (relative) { lx += curX; ly += curY; }
+                                var seg = new StraightLineVectorSegment
+                                {
+                                    X1 = (curX + ctx.TranslateX) / canvasW,
+                                    Y1 = (curY + ctx.TranslateY) / canvasH,
+                                    X2 = (lx + ctx.TranslateX) / canvasW,
+                                    Y2 = (ly + ctx.TranslateY) / canvasH,
+                                    StrokeR = strokeR,
+                                    StrokeG = strokeG,
+                                    StrokeB = strokeB,
+                                    StrokeA = strokeA,
+                                    Thickness = thickness,
+                                };
+                                result.Elements.Add(new SegmentCollectionElement(seg));
+                                curX = lx; curY = ly;
+                            }
+                            break;
                         }
-                        break;
-                    }
 
                     case 'L': // line to
-                    {
-                        while (idx < tokens.Length && IsNumber(tokens[idx]))
                         {
-                            var (x, y) = ReadCoordPair(tokens, ref idx);
-                            if (relative) { x += curX; y += curY; }
-                            var seg = new StraightLineVectorSegment
+                            while (idx < tokens.Length && IsNumber(tokens[idx]))
                             {
-                                X1 = (curX + ctx.TranslateX) / canvasW,
-                                Y1 = (curY + ctx.TranslateY) / canvasH,
-                                X2 = (x + ctx.TranslateX) / canvasW,
-                                Y2 = (y + ctx.TranslateY) / canvasH,
-                                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB,
-                                StrokeA = strokeA, Thickness = thickness,
-                            };
-                            result.Elements.Add(new SegmentCollectionElement(seg));
-                            curX = x; curY = y;
+                                var (x, y) = ReadCoordPair(tokens, ref idx);
+                                if (relative) { x += curX; y += curY; }
+                                var seg = new StraightLineVectorSegment
+                                {
+                                    X1 = (curX + ctx.TranslateX) / canvasW,
+                                    Y1 = (curY + ctx.TranslateY) / canvasH,
+                                    X2 = (x + ctx.TranslateX) / canvasW,
+                                    Y2 = (y + ctx.TranslateY) / canvasH,
+                                    StrokeR = strokeR,
+                                    StrokeG = strokeG,
+                                    StrokeB = strokeB,
+                                    StrokeA = strokeA,
+                                    Thickness = thickness,
+                                };
+                                result.Elements.Add(new SegmentCollectionElement(seg));
+                                curX = x; curY = y;
+                            }
+                            break;
                         }
-                        break;
-                    }
 
                     case 'C': // cubic bezier
-                    {
-                        while (idx < tokens.Length && IsNumber(tokens[idx]))
                         {
-                            var (x1, y1) = ReadCoordPair(tokens, ref idx);
-                            var (x2, y2) = ReadCoordPair(tokens, ref idx);
-                            var (x, y) = ReadCoordPair(tokens, ref idx);
-                            if (relative) { x1 += curX; y1 += curY; x2 += curX; y2 += curY; x += curX; y += curY; }
-                            var seg = new CubicBezierVectorSegment
+                            while (idx < tokens.Length && IsNumber(tokens[idx]))
                             {
-                                X1 = (curX + ctx.TranslateX) / canvasW,
-                                Y1 = (curY + ctx.TranslateY) / canvasH,
-                                X2 = (x1 + ctx.TranslateX) / canvasW,
-                                Y2 = (y1 + ctx.TranslateY) / canvasH,
-                                X3 = (x2 + ctx.TranslateX) / canvasW,
-                                Y3 = (y2 + ctx.TranslateY) / canvasH,
-                                X4 = (x + ctx.TranslateX) / canvasW,
-                                Y4 = (y + ctx.TranslateY) / canvasH,
-                                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB,
-                                StrokeA = strokeA, Thickness = thickness,
-                            };
-                            result.Elements.Add(new SegmentCollectionElement(seg));
-                            curX = x; curY = y;
+                                var (x1, y1) = ReadCoordPair(tokens, ref idx);
+                                var (x2, y2) = ReadCoordPair(tokens, ref idx);
+                                var (x, y) = ReadCoordPair(tokens, ref idx);
+                                if (relative) { x1 += curX; y1 += curY; x2 += curX; y2 += curY; x += curX; y += curY; }
+                                var seg = new CubicBezierVectorSegment
+                                {
+                                    X1 = (curX + ctx.TranslateX) / canvasW,
+                                    Y1 = (curY + ctx.TranslateY) / canvasH,
+                                    X2 = (x1 + ctx.TranslateX) / canvasW,
+                                    Y2 = (y1 + ctx.TranslateY) / canvasH,
+                                    X3 = (x2 + ctx.TranslateX) / canvasW,
+                                    Y3 = (y2 + ctx.TranslateY) / canvasH,
+                                    X4 = (x + ctx.TranslateX) / canvasW,
+                                    Y4 = (y + ctx.TranslateY) / canvasH,
+                                    StrokeR = strokeR,
+                                    StrokeG = strokeG,
+                                    StrokeB = strokeB,
+                                    StrokeA = strokeA,
+                                    Thickness = thickness,
+                                };
+                                result.Elements.Add(new SegmentCollectionElement(seg));
+                                curX = x; curY = y;
+                            }
+                            break;
                         }
-                        break;
-                    }
 
                     case 'Q': // quadratic bezier
-                    {
-                        while (idx < tokens.Length && IsNumber(tokens[idx]))
                         {
-                            var (x1, y1) = ReadCoordPair(tokens, ref idx);
-                            var (x, y) = ReadCoordPair(tokens, ref idx);
-                            if (relative) { x1 += curX; y1 += curY; x += curX; y += curY; }
-                            var seg = new QuadraticBezierVectorSegment
+                            while (idx < tokens.Length && IsNumber(tokens[idx]))
                             {
-                                X1 = (curX + ctx.TranslateX) / canvasW,
-                                Y1 = (curY + ctx.TranslateY) / canvasH,
-                                X2 = (x1 + ctx.TranslateX) / canvasW,
-                                Y2 = (y1 + ctx.TranslateY) / canvasH,
-                                X3 = (x + ctx.TranslateX) / canvasW,
-                                Y3 = (y + ctx.TranslateY) / canvasH,
-                                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB,
-                                StrokeA = strokeA, Thickness = thickness,
-                            };
-                            result.Elements.Add(new SegmentCollectionElement(seg));
-                            curX = x; curY = y;
+                                var (x1, y1) = ReadCoordPair(tokens, ref idx);
+                                var (x, y) = ReadCoordPair(tokens, ref idx);
+                                if (relative) { x1 += curX; y1 += curY; x += curX; y += curY; }
+                                var seg = new QuadraticBezierVectorSegment
+                                {
+                                    X1 = (curX + ctx.TranslateX) / canvasW,
+                                    Y1 = (curY + ctx.TranslateY) / canvasH,
+                                    X2 = (x1 + ctx.TranslateX) / canvasW,
+                                    Y2 = (y1 + ctx.TranslateY) / canvasH,
+                                    X3 = (x + ctx.TranslateX) / canvasW,
+                                    Y3 = (y + ctx.TranslateY) / canvasH,
+                                    StrokeR = strokeR,
+                                    StrokeG = strokeG,
+                                    StrokeB = strokeB,
+                                    StrokeA = strokeA,
+                                    Thickness = thickness,
+                                };
+                                result.Elements.Add(new SegmentCollectionElement(seg));
+                                curX = x; curY = y;
+                            }
+                            break;
                         }
-                        break;
-                    }
 
                     case 'A': // arc
-                    {
-                        while (idx < tokens.Length && IsNumber(tokens[idx]))
                         {
-                            var rx = ReadFloat(tokens, ref idx);
-                            var ry = ReadFloat(tokens, ref idx);
-                            var rot = ReadFloat(tokens, ref idx);
-                            var largeArc = ReadFloat(tokens, ref idx);
-                            var sweep = ReadFloat(tokens, ref idx);
-                            var (x, y) = ReadCoordPair(tokens, ref idx);
-                            if (relative) { x += curX; y += curY; }
-
-                            // Convert SVG endpoint arc to center-based ArcVectorSegment
-                            if (ArcEndpointToCenter(curX, curY, x, y, rx, ry, rot, largeArc != 0, sweep != 0,
-                                                    out var cx, out var cy, out var startAngle, out var sweepAngle))
+                            while (idx < tokens.Length && IsNumber(tokens[idx]))
                             {
-                                var seg = new ArcVectorSegment
+                                var rx = ReadFloat(tokens, ref idx);
+                                var ry = ReadFloat(tokens, ref idx);
+                                var rot = ReadFloat(tokens, ref idx);
+                                var largeArc = ReadFloat(tokens, ref idx);
+                                var sweep = ReadFloat(tokens, ref idx);
+                                var (x, y) = ReadCoordPair(tokens, ref idx);
+                                if (relative) { x += curX; y += curY; }
+
+                                // Convert SVG endpoint arc to center-based ArcVectorSegment
+                                if (ArcEndpointToCenter(curX, curY, x, y, rx, ry, rot, largeArc != 0, sweep != 0,
+                                                        out var cx, out var cy, out var startAngle, out var sweepAngle))
                                 {
-                                    X = (cx + ctx.TranslateX) / canvasW,
-                                    Y = (cy + ctx.TranslateY) / canvasH,
-                                    RadiusX = rx / canvasW,
-                                    RadiusY = ry / canvasH,
-                                    StartAngle = startAngle,
-                                    SweepAngle = sweepAngle,
-                                    StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB,
-                                    StrokeA = strokeA, Thickness = thickness,
+                                    var seg = new ArcVectorSegment
+                                    {
+                                        X = (cx + ctx.TranslateX) / canvasW,
+                                        Y = (cy + ctx.TranslateY) / canvasH,
+                                        RadiusX = rx / canvasW,
+                                        RadiusY = ry / canvasH,
+                                        StartAngle = startAngle,
+                                        SweepAngle = sweepAngle,
+                                        StrokeR = strokeR,
+                                        StrokeG = strokeG,
+                                        StrokeB = strokeB,
+                                        StrokeA = strokeA,
+                                        Thickness = thickness,
+                                    };
+                                    result.Elements.Add(new SegmentCollectionElement(seg));
+                                }
+
+                                curX = x; curY = y;
+                            }
+                            break;
+                        }
+
+                    case 'Z': // close path
+                        {
+                            if (hasMove && (curX != startX || curY != startY))
+                            {
+                                var seg = new StraightLineVectorSegment
+                                {
+                                    X1 = (curX + ctx.TranslateX) / canvasW,
+                                    Y1 = (curY + ctx.TranslateY) / canvasH,
+                                    X2 = (startX + ctx.TranslateX) / canvasW,
+                                    Y2 = (startY + ctx.TranslateY) / canvasH,
+                                    StrokeR = strokeR,
+                                    StrokeG = strokeG,
+                                    StrokeB = strokeB,
+                                    StrokeA = strokeA,
+                                    Thickness = thickness,
                                 };
                                 result.Elements.Add(new SegmentCollectionElement(seg));
                             }
-
-                            curX = x; curY = y;
+                            curX = startX; curY = startY;
+                            break;
                         }
-                        break;
-                    }
-
-                    case 'Z': // close path
-                    {
-                        if (hasMove && (curX != startX || curY != startY))
-                        {
-                            var seg = new StraightLineVectorSegment
-                            {
-                                X1 = (curX + ctx.TranslateX) / canvasW,
-                                Y1 = (curY + ctx.TranslateY) / canvasH,
-                                X2 = (startX + ctx.TranslateX) / canvasW,
-                                Y2 = (startY + ctx.TranslateY) / canvasH,
-                                StrokeR = strokeR, StrokeG = strokeG, StrokeB = strokeB,
-                                StrokeA = strokeA, Thickness = thickness,
-                            };
-                            result.Elements.Add(new SegmentCollectionElement(seg));
-                        }
-                        curX = startX; curY = startY;
-                        break;
-                    }
                 }
             }
         }
@@ -929,21 +1039,21 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     continue;
                 }
 
-                    // Number
-                    var start = i;
-                    if (d[i] == '-' || d[i] == '+')
+                // Number
+                var start = i;
+                if (d[i] == '-' || d[i] == '+')
+                    i++;
+                while (i < d.Length && (char.IsDigit(d[i]) || d[i] == '.'))
+                    i++;
+                if (i < d.Length && (d[i] == 'e' || d[i] == 'E'))
+                {
+                    i++;
+                    if (i < d.Length && (d[i] == '-' || d[i] == '+'))
                         i++;
-                    while (i < d.Length && (char.IsDigit(d[i]) || d[i] == '.'))
+                    while (i < d.Length && char.IsDigit(d[i]))
                         i++;
-                    if (i < d.Length && (d[i] == 'e' || d[i] == 'E'))
-                    {
-                        i++;
-                        if (i < d.Length && (d[i] == '-' || d[i] == '+'))
-                            i++;
-                        while (i < d.Length && char.IsDigit(d[i]))
-                            i++;
-                    }
-                    list.Add(d[start..i]);
+                }
+                list.Add(d[start..i]);
             }
 
             return [.. list];
@@ -1001,6 +1111,20 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             out ushort strokeR, out ushort strokeG, out ushort strokeB, out float strokeA,
             out float thickness)
         {
+            // Private fill color takes priority
+            if (ctx.PrivateFillColor != null)
+            {
+                var parsed = ParsePrivateColorValue(ctx.PrivateFillColor);
+                if (parsed.HasValue)
+                {
+                    fillR = parsed.Value.r; fillG = parsed.Value.g; fillB = parsed.Value.b;
+                    fillA = parsed.Value.a;
+                    NormalizeStrokeOnly(ctx, out strokeR, out strokeG, out strokeB, out strokeA, out thickness);
+                    return;
+                }
+            }
+
+            // Standard fill fallback
             var fillColor = ParseColor(ctx.Fill, false);
             if (fillColor.HasValue)
             {
@@ -1019,6 +1143,18 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             out ushort strokeR, out ushort strokeG, out ushort strokeB, out float strokeA,
             out float thickness)
         {
+            if (ctx.PrivateStrokeColor != null)
+            {
+                var parsed = ParsePrivateColorValue(ctx.PrivateStrokeColor);
+                if (parsed.HasValue)
+                {
+                    strokeR = parsed.Value.r; strokeG = parsed.Value.g; strokeB = parsed.Value.b;
+                    strokeA = parsed.Value.a;
+                    thickness = ctx.StrokeWidth;
+                    return;
+                }
+            }
+
             var strokeColor = ParseColor(ctx.Stroke, true);
             if (strokeColor.HasValue && ctx.StrokeWidth > 0f)
             {
@@ -1143,6 +1279,41 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         private static string ColorToHex(ushort r, ushort g, ushort b)
         {
             return $"#{r >> 8:X2}{g >> 8:X2}{b >> 8:X2}";
+        }
+
+        // =====================================================================
+        // Private color format helpers (UsePrivateColorSavingMode)
+        // Format: "#RRRRGGGGBBBB<Base64Alpha>" where RRRR/GGGG/BBBB are 4-hex-digit
+        // ushort values and Base64Alpha is the 4 bytes of the float alpha encoded
+        // as Base64.
+        // =====================================================================
+
+        private static string PrivateColorValue(ushort r, ushort g, ushort b, float a)
+        {
+            return $"#{r:X4}{g:X4}{b:X4}{Convert.ToBase64String(BitConverter.GetBytes(a))}";
+        }
+
+        private static (ushort r, ushort g, ushort b, float a)? ParsePrivateColorValue(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value[0] != '#' || value.Length < 13)
+                return null;
+
+            if (!ushort.TryParse(value.AsSpan(1, 4), NumberStyles.HexNumber, CI, out var r) ||
+                !ushort.TryParse(value.AsSpan(5, 4), NumberStyles.HexNumber, CI, out var g) ||
+                !ushort.TryParse(value.AsSpan(9, 4), NumberStyles.HexNumber, CI, out var b))
+                return null;
+
+            try
+            {
+                var alphaBytes = Convert.FromBase64String(value[13..]);
+                if (alphaBytes.Length != 4)
+                    return null;
+                return (r, g, b, BitConverter.ToSingle(alphaBytes, 0));
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
         }
     }
 }

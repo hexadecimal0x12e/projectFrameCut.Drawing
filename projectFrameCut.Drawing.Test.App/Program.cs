@@ -2,8 +2,10 @@
 using projectFrameCut.Drawing.Base.Picture;
 using projectFrameCut.Drawing.Processing.Cropping;
 using projectFrameCut.Drawing.Processing.Resizing;
+using projectFrameCut.Drawing.Text;
 using projectFrameCut.Drawing.Text.FontHelper;
 using projectFrameCut.Drawing.Text.FontHelper.Table;
+using projectFrameCut.Drawing.Text.Typology;
 using projectFrameCut.Drawing.Vector;
 using projectFrameCut.Drawing.Vector.ImportExport;
 using System.Text.Json;
@@ -35,6 +37,7 @@ namespace projectFrameCut.Drawing.Test.App
         static void Main(string[] args)
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
+            SVGToVectorElement.UsePrivateColorSavingMode = true;
             var mode = args.Length > 0 ? args[0] : "";
             switch (mode)
             {
@@ -173,6 +176,49 @@ namespace projectFrameCut.Drawing.Test.App
                         Console.WriteLine("Elements:");
                         foreach (var el in fromFile.Elements)
                             Console.WriteLine($"  [{el.LayerIndex}] ({el.RelativeX:F2}, {el.RelativeY:F2}) → {el.Draw().Length} segment(s)");
+                        return;
+                    }
+
+                case "glyph2VectPicture":
+                    {
+                        Console.Write("Input font file path: ");
+                        var path = Console.ReadLine();
+                        if (!File.Exists(path))
+                        {
+                            Console.WriteLine("File not found.");
+                            return;
+                        }
+                        FontFace font = null!;
+                        if (Path.GetExtension(path).Equals(".ttc", StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            font = FontCollection.Load(path)?.FirstOrDefault()?.Load();
+                        }
+                        else
+                        {
+                            font = FontFace.Load(path);
+                        }
+                        if (font is null) return;
+                        Console.Write("Input character to convert to vector (default 'A'): ");
+                        var str = Console.ReadLine();
+                        var entry = new TextEntry
+                        {
+                            Text = string.IsNullOrEmpty(str) ? "A" : str,
+                            FontName = font.FamilyName,
+                            FontSize = 0.1f,
+                            FillR = 0,
+                            FillG = 0,
+                            FillB = 0,
+                            FillA = 1f,
+                            X = 0.5f,
+                            Y = 0.5f,
+                        };
+                        var size = NormalTypesettingEngine.FromEntry(entry).Measure(str, font);
+                        var canvas = TextRender.Render(entry, font, []);
+                        var svg = SVGToVectorElement.ExportToSvg(canvas, (int)(size.width * 250), (int)(size.height * 500));
+                        var outDir = AppDomain.CurrentDomain.BaseDirectory;
+                        var svgPath = Path.Combine(outDir, $"result-{DateTime.Now:yyyyMMddHHmmss}.svg");
+                        File.WriteAllText(svgPath, svg);
+                        Console.WriteLine($"SVG saved to: {svgPath}");
                         return;
                     }
             }

@@ -10,13 +10,33 @@
 		<FileVersion>1.0.0.0</FileVersion>
 		<Authors>hexadecimal0x12e</Authors>
 		<Product>projectFrameCut Drawing library</Product>
-		<Description>projectFrameCut Drawing library</Description>
+		<Description>the true core of projectFrameCut</Description>
 		<AssemblyTitle>projectFrameCut Drawing library</AssemblyTitle>
 		<AssemblyDescription>projectFrameCut Drawing library</AssemblyDescription>
 		<Copyright>Copyright (c) hexadecimal0x12e 2026</Copyright>
 		<PackageProjectUrl>https://github.com/hexadecimal0x12e/projectFrameCut.Drawing</PackageProjectUrl>
 		<Title>projectFrameCut Drawing library</Title>
+		<RepositoryUrl>https://github.com/hexadecimal0x12e/projectFrameCut.Drawing</RepositoryUrl>
+		<PackageReadmeFile>readme.md</PackageReadmeFile>
+		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+		<PackageLicenseFile>license.txt</PackageLicenseFile>
+		<IncludeSymbols>True</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<GenerateDocumentationFile>True</GenerateDocumentationFile>
+		<IsTrimmable>True</IsTrimmable>
+		<IsAotCompatible>True</IsAotCompatible>
 	</PropertyGroup>
+
+	<ItemGroup>
+	  <None Include="..\license.txt">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </None>
+	  <None Include="..\readme.md">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </None>
+	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.45">
@@ -29,8 +49,5 @@
 		<ProjectReference Include="..\projectFrameCut.Drawing.Text\projectFrameCut.Drawing.Text.csproj" />
 		<ProjectReference Include="..\projectFrameCut.Drawing.Vector\projectFrameCut.Drawing.Vector.csproj" />
 	</ItemGroup>
-
-	<!-- NuGet 包 ILRepack.Lib.MSBuild.Task 已内置默认 ILRepack target，Release 时自动合并所有依赖 DLL -->
-	<!-- 如需自定义 Internalize 等设置，创建 ILRepack.targets 文件覆盖默认行为 -->
 
 </Project>

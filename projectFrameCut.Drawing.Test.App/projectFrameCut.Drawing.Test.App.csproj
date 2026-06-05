@@ -11,6 +11,7 @@
     <ProjectReference Include="..\projectFrameCut.Drawing.Base\projectFrameCut.Drawing.Base.csproj" />
     <ProjectReference Include="..\projectFrameCut.Drawing.Processing\projectFrameCut.Drawing.Processing.csproj" />
     <ProjectReference Include="..\projectFrameCut.Drawing.Text.FontHelper\projectFrameCut.Drawing.Text.FontHelper.csproj" />
+    <ProjectReference Include="..\projectFrameCut.Drawing.Text\projectFrameCut.Drawing.Text.csproj" />
     <ProjectReference Include="..\projectFrameCut.Drawing.Vector\projectFrameCut.Drawing.Vector.csproj" />
   </ItemGroup>
 

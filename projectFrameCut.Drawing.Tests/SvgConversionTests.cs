@@ -317,4 +317,136 @@ public sealed class SvgConversionTests
         Assert.IsLessThan(bluePos, greenPos);
         Assert.IsLessThan(redPos, bluePos);
     }
+
+    // ---------------------------------------------------------------
+    // UsePrivateColorSavingMode tests
+    // ---------------------------------------------------------------
+
+    [TestCleanup]
+    public void CleanupPrivateColorMode()
+    {
+        SVGToVectorElement.UsePrivateColorSavingMode = false;
+    }
+
+    [TestMethod]
+    public void Export_PrivateColorMode_EmitsCustomAttributes()
+    {
+        SVGToVectorElement.UsePrivateColorSavingMode = true;
+
+        var canvas = new Vc.VectorPicture();
+        canvas.Elements.Add(new SegmentCollectionElement(
+            new Vc.RectangleVectorSegment
+            {
+                X = 0.1f, Y = 0.2f, Width = 0.5f, Height = 0.3f,
+                FillR = ushort.MaxValue, FillG = 0, FillB = 0, FillA = 0.5f,
+                Thickness = 2f,
+                StrokeR = 0, StrokeG = 0, StrokeB = ushort.MaxValue, StrokeA = 1f,
+            }
+        ));
+
+        var svg = SVGToVectorElement.ExportToSvg(canvas, 200, 100);
+
+        // Standard attributes still present
+        Assert.Contains("fill=\"#FF0000\"", svg);
+        Assert.Contains("stroke=\"#0000FF\"", svg);
+        Assert.Contains("fill-opacity=\"0.5\"", svg);
+
+        // Custom private color attributes present
+        Assert.Contains("fill_projectFrameCut.Drawing.Color=", svg);
+        Assert.Contains("stroke_projectFrameCut.Drawing.Color=", svg);
+
+        // Verify the fill private color contains the 16-bit red value
+        Assert.Contains("#FFFF00000000", svg);
+
+        // Verify the stroke private color contains the 16-bit blue value
+        Assert.Contains("#00000000FFFF", svg);
+
+        // Line segment should also have private stroke attribute
+        canvas.Elements.Add(new SegmentCollectionElement(
+            new Vc.StraightLineVectorSegment
+            {
+                X1 = 0, Y1 = 0, X2 = 1, Y2 = 1,
+                Thickness = 1f,
+                StrokeR = 65535, StrokeG = 65535, StrokeB = 65535, StrokeA = 0.8f,
+            }
+        ));
+        svg = SVGToVectorElement.ExportToSvg(canvas, 100, 100);
+        Assert.Contains("stroke_projectFrameCut.Drawing.Color=", svg);
+
+        // Bezier should also have private stroke attribute
+        canvas.Elements.Add(new SegmentCollectionElement(
+            new Vc.CubicBezierVectorSegment
+            {
+                X1 = 0, Y1 = 0, X2 = 0.5f, Y2 = 0.5f,
+                X3 = 1, Y3 = 0, X4 = 1, Y4 = 1,
+                Thickness = 1f,
+                StrokeR = 65535, StrokeG = 0, StrokeB = 0, StrokeA = 1f,
+            }
+        ));
+        svg = SVGToVectorElement.ExportToSvg(canvas, 100, 100);
+        Assert.Contains("stroke_projectFrameCut.Drawing.Color=", svg);
+    }
+
+    [TestMethod]
+    public void Import_PrivateColorAttributes_ParsesCorrectly()
+    {
+        var svg = $"""
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+              <rect x="20" y="10" width="100" height="50"
+                    fill="#FF0000" fill_projectFrameCut.Drawing.Color="#FFFF00000000{Convert.ToBase64String(BitConverter.GetBytes(1.0f))}"
+                    stroke="#0000FF" stroke_projectFrameCut.Drawing.Color="#00000000FFFF{Convert.ToBase64String(BitConverter.GetBytes(1.0f))}"
+                    stroke-width="2"/>
+            </svg>
+            """;
+
+        var canvas = SVGToVectorElement.ImportFromSvg(svg);
+        var rect = canvas.Elements[0].Draw()[0] as Vc.RectangleVectorSegment;
+        Assert.IsNotNull(rect);
+
+        // Private color should give exact 16-bit values (not truncated to 8-bit)
+        Assert.AreEqual(ushort.MaxValue, rect.FillR);
+        Assert.AreEqual(0, rect.FillG);
+        Assert.AreEqual(0, rect.FillB);
+        Assert.AreEqual(1.0f, rect.FillA, 0.001f);
+
+        // Stroke
+        Assert.AreEqual(0, rect.StrokeR);
+        Assert.AreEqual(0, rect.StrokeG);
+        Assert.AreEqual(ushort.MaxValue, rect.StrokeB);
+        Assert.AreEqual(1.0f, rect.StrokeA, 0.001f);
+    }
+
+    [TestMethod]
+    public void RoundTrip_PrivateColorMode_PreservesPrecision()
+    {
+        SVGToVectorElement.UsePrivateColorSavingMode = true;
+
+        var original = new Vc.VectorPicture();
+        var rect = new Vc.RectangleVectorSegment
+        {
+            X = 0.1f, Y = 0.2f, Width = 0.5f, Height = 0.3f,
+            FillR = 12345, FillG = 40000, FillB = 1000, FillA = 0.753f,
+            Thickness = 1.5f,
+            StrokeR = 50000, StrokeG = 20000, StrokeB = 800, StrokeA = 0.333f,
+        };
+        original.Elements.Add(new SegmentCollectionElement(rect));
+
+        var svg = SVGToVectorElement.ExportToSvg(original, 400, 300);
+        var imported = SVGToVectorElement.ImportFromSvg(svg);
+        var importedRect = imported.Elements[0].Draw()[0] as Vc.RectangleVectorSegment;
+        Assert.IsNotNull(importedRect);
+
+        // 16-bit color channels must match exactly
+        Assert.AreEqual(rect.FillR, importedRect.FillR);
+        Assert.AreEqual(rect.FillG, importedRect.FillG);
+        Assert.AreEqual(rect.FillB, importedRect.FillB);
+        Assert.AreEqual(rect.FillA, importedRect.FillA, 0.001f);
+
+        Assert.AreEqual(rect.StrokeR, importedRect.StrokeR);
+        Assert.AreEqual(rect.StrokeG, importedRect.StrokeG);
+        Assert.AreEqual(rect.StrokeB, importedRect.StrokeB);
+        Assert.AreEqual(rect.StrokeA, importedRect.StrokeA, 0.001f);
+
+        Assert.AreEqual(rect.Thickness, importedRect.Thickness, 0.001f);
+    }
 }

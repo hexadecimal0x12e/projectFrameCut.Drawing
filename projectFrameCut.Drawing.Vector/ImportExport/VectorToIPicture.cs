@@ -45,9 +45,17 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 var oy = element.RelativeY * height;
                 var segments = element.Draw();
 
-                foreach (var segment in segments)
+                if (element.Rotation != 0f)
                 {
-                    converter.RenderSegment(segment, ox, oy);
+                    float cosA = MathF.Cos(element.Rotation);
+                    float sinA = MathF.Sin(element.Rotation);
+                    foreach (var segment in segments)
+                        converter.RenderSegment(RotateSegment(segment, cosA, sinA), ox, oy);
+                }
+                else
+                {
+                    foreach (var segment in segments)
+                        converter.RenderSegment(segment, ox, oy);
                 }
             }
 
@@ -673,10 +681,23 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             for (var i = 0; i < pts.Length; i++)
                 canvasPts[i] = (CX(pts[i].X, ox), CY(pts[i].Y, oy));
 
-            if (s.FillA > 0f)
-                FillPolygonScanline(canvasPts, s.FillR, s.FillG, s.FillB, s.FillA);
+            bool hasFill = s.FillA > 0f;
+            bool hasStroke = s.Thickness > 0f && s.StrokeA > 0f;
+            bool hasHoles = s.Holes is { Length: > 0 };
 
-            if (s.Thickness > 0f && s.StrokeA > 0f)
+            if (hasFill)
+            {
+                if (hasHoles)
+                {
+                    FillPolygonScanlineEvenOdd(canvasPts, s.Holes!, ox, oy, s.FillR, s.FillG, s.FillB, s.FillA);
+                }
+                else
+                {
+                    FillPolygonScanline(canvasPts, s.FillR, s.FillG, s.FillB, s.FillA);
+                }
+            }
+
+            if (hasStroke)
             {
                 for (var i = 0; i < pts.Length; i++)
                 {
@@ -827,12 +848,236 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         }
 
         // ---------------------------------------------------------------
+        // Even-odd polygon fill (outer + holes)
+        // ---------------------------------------------------------------
+
+        private void FillPolygonScanlineEvenOdd(
+            ReadOnlySpan<(float x, float y)> outerPts,
+            Point[][] holes,
+            float ox, float oy,
+            ushort r, ushort g, ushort b, float alpha)
+        {
+            // Collect all edge segments: outer + every hole contour.
+            int totalEdges = outerPts.Length;
+            foreach (var h in holes)
+                totalEdges += h.Length;
+
+            var edges = new (float yA, float yB, float xA, float xB, float dx)[totalEdges];
+            int ei = 0;
+
+            void AddEdges(ReadOnlySpan<(float x, float y)> pts)
+            {
+                for (int i = 0; i < pts.Length; i++)
+                {
+                    int j = (i + 1) % pts.Length;
+                    float yA = pts[i].y, yB = pts[j].y;
+                    float xA = pts[i].x, xB = pts[j].x;
+                    if (yA == yB) continue; // horizontal edge — skip
+                    edges[ei++] = yA <= yB
+                        ? (yA, yB, xA, xB, (xB - xA) / (yB - yA))
+                        : (yB, yA, xB, xA, (xA - xB) / (yA - yB));
+                }
+            }
+
+            AddEdges(outerPts);
+            foreach (var hole in holes)
+            {
+                Span<(float x, float y)> holePts = stackalloc (float, float)[hole.Length];
+                for (int i = 0; i < hole.Length; i++)
+                    holePts[i] = (CX(hole[i].X, ox), CY(hole[i].Y, oy));
+                AddEdges(holePts);
+            }
+            int edgeCount = ei;
+
+            // Find Y bounds
+            float minY = float.MaxValue, maxY = float.MinValue;
+            for (int i = 0; i < edgeCount; i++)
+            {
+                if (edges[i].yA < minY) minY = edges[i].yA;
+                if (edges[i].yB > maxY) maxY = edges[i].yB;
+            }
+
+            int y0 = Math.Clamp((int)(minY + 0.5f), 0, _height - 1);
+            int y1 = Math.Clamp((int)(maxY + 0.5f), 0, _height - 1);
+
+            var intersections = new float[totalEdges];
+
+            for (int py = y0; py <= y1; py++)
+            {
+                float y = py + 0.5f;
+                int count = 0;
+
+                for (int i = 0; i < edgeCount; i++)
+                {
+                    if (y >= edges[i].yA && y < edges[i].yB)
+                        intersections[count++] = edges[i].xA + (y - edges[i].yA) * edges[i].dx;
+                }
+
+                if (count < 2) continue;
+
+                Array.Sort(intersections, 0, count);
+
+                for (int k = 0; k < count - 1; k += 2)
+                {
+                    int xL = Math.Clamp((int)(intersections[k] + 0.5f), 0, _width - 1);
+                    int xR = Math.Clamp((int)(intersections[k + 1] + 0.5f), 0, _width - 1);
+
+                    for (int px = xL; px <= xR; px++)
+                    {
+                        int idx = py * _width + px;
+                        if (alpha >= 1f)
+                        {
+                            _r[idx] = r; _g[idx] = g; _b[idx] = b;
+                        }
+                        else
+                        {
+                            var a0 = _a[idx];
+                            var aOut = a0 + alpha * (1f - a0);
+                            _r[idx] = (ushort)((r * alpha + _r[idx] * a0 * (1f - alpha)) / aOut);
+                            _g[idx] = (ushort)((g * alpha + _g[idx] * a0 * (1f - alpha)) / aOut);
+                            _b[idx] = (ushort)((b * alpha + _b[idx] * a0 * (1f - alpha)) / aOut);
+                            _a[idx] = aOut;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------
         // Utility
         // ---------------------------------------------------------------
 
         private static void Swap(ref float a, ref float b)
         {
             var t = a; a = b; b = t;
+        }
+
+        // ---------------------------------------------------------------
+        //  Rotation
+        // ---------------------------------------------------------------
+
+        private static VectorSegment RotateSegment(VectorSegment seg, float cosA, float sinA)
+        {
+            return seg switch
+            {
+                StraightLineVectorSegment s => s with
+                {
+                    X1 = s.X1 * cosA - s.Y1 * sinA,
+                    Y1 = s.X1 * sinA + s.Y1 * cosA,
+                    X2 = s.X2 * cosA - s.Y2 * sinA,
+                    Y2 = s.X2 * sinA + s.Y2 * cosA,
+                },
+                QuadraticBezierVectorSegment s => s with
+                {
+                    X1 = s.X1 * cosA - s.Y1 * sinA,
+                    Y1 = s.X1 * sinA + s.Y1 * cosA,
+                    X2 = s.X2 * cosA - s.Y2 * sinA,
+                    Y2 = s.X2 * sinA + s.Y2 * cosA,
+                    X3 = s.X3 * cosA - s.Y3 * sinA,
+                    Y3 = s.X3 * sinA + s.Y3 * cosA,
+                },
+                CubicBezierVectorSegment s => s with
+                {
+                    X1 = s.X1 * cosA - s.Y1 * sinA,  Y1 = s.X1 * sinA + s.Y1 * cosA,
+                    X2 = s.X2 * cosA - s.Y2 * sinA,  Y2 = s.X2 * sinA + s.Y2 * cosA,
+                    X3 = s.X3 * cosA - s.Y3 * sinA,  Y3 = s.X3 * sinA + s.Y3 * cosA,
+                    X4 = s.X4 * cosA - s.Y4 * sinA,  Y4 = s.X4 * sinA + s.Y4 * cosA,
+                },
+                PolygonVectorSegment s => s with
+                {
+                    Points = Array.ConvertAll(s.Points, p => new Point(
+                        p.X * cosA - p.Y * sinA,
+                        p.X * sinA + p.Y * cosA)),
+                    Holes = s.Holes?.Select(h => Array.ConvertAll(h, p => new Point(
+                        p.X * cosA - p.Y * sinA,
+                        p.X * sinA + p.Y * cosA))).ToArray(),
+                },
+                PolylineVectorSegment s => s with
+                {
+                    Points = Array.ConvertAll(s.Points, p => new Point(
+                        p.X * cosA - p.Y * sinA,
+                        p.X * sinA + p.Y * cosA)),
+                },
+                // Convert rectangles / rounded-rects to rotated polygons
+                RoundedRectangleVectorSegment s => SegToRotatedPolygon(s.X, s.Y, s.Width, s.Height, cosA, sinA, s.CornerRadius, s),
+                RectangleVectorSegment s => SegToRotatedPolygon(s.X, s.Y, s.Width, s.Height, cosA, sinA, null, s),
+                // Rotate ellipse center; the axes-aligned ellipse becomes a rotated one
+                EllipseVectorSegment s => s with
+                {
+                    X = s.X * cosA - s.Y * sinA,
+                    Y = s.X * sinA + s.Y * cosA,
+                },
+                ArcVectorSegment s => s with
+                {
+                    X = s.X * cosA - s.Y * sinA,
+                    Y = s.X * sinA + s.Y * cosA,
+                    StartAngle = s.StartAngle + MathF.Atan2(sinA, cosA),
+                },
+                _ => seg,
+            };
+        }
+
+        private static PolygonVectorSegment SegToRotatedPolygon(
+            float x, float y, float w, float h, float cosA, float sinA, float? cornerRadius, VectorSegment props)
+        {
+            if (cornerRadius is > 0f)
+            {
+                // Rounded rect: approximate via a polygon with enough points
+                var pts = new List<Point>();
+                float r = cornerRadius.Value;
+                const int cornerSegments = 8;
+
+                void AddArc(float cx, float cy, float startAngle, float sweepAngle, int segs)
+                {
+                    for (int i = 0; i <= segs; i++)
+                    {
+                        float a = startAngle + sweepAngle * i / segs;
+                        pts.Add(new Point(cx + r * MathF.Cos(a), cy + r * MathF.Sin(a)));
+                    }
+                }
+
+                // Top-left (π to -π/2), Top-right (-π/2 to 0), Bottom-right (0 to π/2), Bottom-left (π/2 to π)
+                float x0 = x + r, x1 = x + w - r, y0 = y + r, y1 = y + h - r;
+                AddArc(x1, y0, -MathF.PI / 2f, MathF.PI / 2f, cornerSegments);
+                AddArc(x1, y1, 0, MathF.PI / 2f, cornerSegments);
+                AddArc(x0, y1, MathF.PI / 2f, MathF.PI / 2f, cornerSegments);
+                AddArc(x0, y0, MathF.PI, MathF.PI / 2f, cornerSegments);
+
+                var rotated = pts.ConvertAll(p => new Point(
+                    p.X * cosA - p.Y * sinA,
+                    p.X * sinA + p.Y * cosA));
+
+                return new PolygonVectorSegment
+                {
+                    Points = rotated.ToArray(),
+                    FillR = props.FillR, FillG = props.FillG, FillB = props.FillB, FillA = props.FillA,
+                    Thickness = props.Thickness,
+                    StrokeR = props.StrokeR, StrokeG = props.StrokeG, StrokeB = props.StrokeB, StrokeA = props.StrokeA,
+                };
+            }
+
+            // Plain rectangle → 4-corner polygon
+            Span<Point> corners = stackalloc Point[4]
+            {
+                new(x, y),
+                new(x + w, y),
+                new(x + w, y + h),
+                new(x, y + h),
+            };
+
+            var rotatedCorners = new Point[4];
+            for (int i = 0; i < 4; i++)
+                rotatedCorners[i] = new Point(
+                    corners[i].X * cosA - corners[i].Y * sinA,
+                    corners[i].X * sinA + corners[i].Y * cosA);
+
+            return new PolygonVectorSegment
+            {
+                Points = rotatedCorners,
+                FillR = props.FillR, FillG = props.FillG, FillB = props.FillB, FillA = props.FillA,
+                Thickness = props.Thickness,
+                StrokeR = props.StrokeR, StrokeG = props.StrokeG, StrokeB = props.StrokeB, StrokeA = props.StrokeA,
+            };
         }
     }
 }

@@ -69,6 +69,14 @@ internal static class BigEndianReader
     public static float ReadF2Dot14(ReadOnlySpan<byte> data, ref int offset) =>
         ReadInt16(data, ref offset) / 16384.0f;
 
+    /// <summary>
+    /// Read a 16.16 signed fixed-point number (int32 / 65536.0).
+    /// Used by the 'fvar' table for axis min/default/max values.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static float ReadFixed(ReadOnlySpan<byte> data, ref int offset) =>
+        ReadInt32(data, ref offset) / 65536.0f;
+
     private static void ThrowOffsetOutOfRange(int offset, int length) =>
         throw new InvalidFontFileException(
             $"Offset {offset} is out of range (data length: {length}).");

@@ -82,6 +82,13 @@ namespace projectFrameCut.Drawing.Vector
     public record PolygonVectorSegment : VectorSegment
     {
         public required Point[] Points { get; init; }
+
+        /// <summary>
+        /// Optional hole polygons. When set, all edges (outer + holes) are
+        /// rendered together using the even-odd fill rule so that holes
+        /// punch through the main polygon instead of being filled over.
+        /// </summary>
+        public Point[][]? Holes { get; init; }
     }
 
     public record PolylineVectorSegment : VectorSegment

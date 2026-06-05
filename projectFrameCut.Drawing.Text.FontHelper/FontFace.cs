@@ -14,6 +14,7 @@ public sealed class FontFace : IDisposable
     private readonly CmapData _cmap;
     private readonly LocaData? _loca;
     private readonly byte[]? _glyfData;
+    private readonly VariationEngine? _variation;
     private readonly IReadOnlySet<TargetLanguage> _targetLanguages;
     private readonly IReadOnlyDictionary<TargetLanguage, string> _localizedNames;
     private bool _disposed;
@@ -61,6 +62,11 @@ public sealed class FontFace : IDisposable
         _os2 = sfnt.HasTable("OS/2")
             ? Os2Table.Parse(sfnt.GetTableData("OS/2"))
             : new Os2Data(400, 5, 0, 0, 0, 0);
+
+        // Variable font support: initialize VariationEngine if fvar table exists
+        _variation = sfnt.HasTable("fvar")
+            ? new VariationEngine(this, sfnt)
+            : null;
     }
 
     public static FontFace Load(string path) =>
@@ -139,6 +145,64 @@ public sealed class FontFace : IDisposable
     public bool IsItalic => _os2.IsItalic || _head.IsItalic;
     public ushort WeightClass => _os2.WeightClass;
 
+    // ── Variable font support ──
+
+    /// <summary>Whether this font supports OpenType Font Variations (variable font).</summary>
+    public bool IsVariableFont => _variation?.IsVariable ?? false;
+
+    /// <summary>The variation axes declared by this font (if variable).</summary>
+    public IReadOnlyList<VariationAxis> VariationAxes =>
+        _variation?.Axes ?? Array.Empty<VariationAxis>();
+
+    /// <summary>The named instances declared by this font (if variable).</summary>
+    public IReadOnlyList<NamedInstance> NamedInstances =>
+        _variation?.Instances ?? Array.Empty<NamedInstance>();
+
+    /// <summary>Set a single variation axis by tag.</summary>
+    public bool TrySetVariationAxis(string axisTag, float value)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _variation?.TrySetAxis(axisTag, value) ?? false;
+    }
+
+    /// <summary>Set multiple variation axes at once. Resets unlisted axes to defaults.</summary>
+    public void SetVariationAxes(IReadOnlyDictionary<string, float> axes)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _variation?.SetAxes(axes);
+    }
+
+    /// <summary>Get the current value of a variation axis (denormalized).</summary>
+    public float GetVariationAxis(string axisTag) =>
+        _variation?.GetAxis(axisTag) ?? 0f;
+
+    /// <summary>
+    /// Get a glyph with current variations applied.
+    /// For non-variable fonts or default axis values, returns the base glyph.
+    /// </summary>
+    public Glyph? GetVariedGlyph(ushort glyphIndex)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (_variation == null)
+            return GetGlyph(glyphIndex);
+
+        return _variation.GetVariedGlyph(glyphIndex);
+    }
+
+    /// <summary>
+    /// Get the advance width for a glyph with current variations applied.
+    /// </summary>
+    public ushort GetVariedAdvanceWidth(ushort glyphIndex)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (_variation == null)
+            return GetAdvanceWidth(glyphIndex);
+
+        return _variation.GetVariedAdvanceWidth(glyphIndex);
+    }
+
     // ── Glyph access ──
 
     public ushort GetGlyphIndex(char unicodeCodepoint) =>
@@ -156,8 +220,40 @@ public sealed class FontFace : IDisposable
                 "This font uses CFF outlines and does not support glyph-level access. " +
                 "Use GetAdvanceWidth() for metrics instead.");
 
+        return ParseAndMeasureGlyph(glyphIndex, null);
+    }
+
+    /// <summary>
+    /// Parse a glyph with an optional variation applier callback.
+    /// For composite glyphs, the callback is invoked for each component glyph
+    /// during recursive decomposition, ensuring variable font variations are
+    /// applied at the component level.
+    /// </summary>
+    internal Glyph? GetGlyphWithVariation(
+        ushort glyphIndex,
+        GlyfTable.VariationApplier variationApplier)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (glyphIndex >= _maxp.NumGlyphs)
+            throw new ArgumentOutOfRangeException(nameof(glyphIndex));
+
+        if (_loca == null || _glyfData == null)
+            throw new InvalidFontFileException(
+                "This font uses CFF outlines and does not support glyph-level access. " +
+                "Use GetAdvanceWidth() for metrics instead.");
+
+        return ParseAndMeasureGlyph(glyphIndex, variationApplier);
+    }
+
+    private Glyph? ParseAndMeasureGlyph(
+        ushort glyphIndex,
+        GlyfTable.VariationApplier? variationApplier)
+    {
+        LocaData loca = _loca!.Value;
         Glyph? glyph = GlyfTable.ParseGlyph(
-            _glyfData, _loca.Value, glyphIndex, _sfnt, _maxp, 0);
+            _glyfData!, loca, glyphIndex, _sfnt, _maxp, 0,
+            variationApplier);
 
         if (glyph != null)
         {

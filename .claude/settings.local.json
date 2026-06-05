@@ -11,7 +11,12 @@
       "Bash(Get-ChildItem -Recurse -Directory \"d:\\\\code\\\\projectFrameCut.Drawing\")",
       "Bash(Select-Object FullName)",
       "Bash(Get-Content *)",
-      "Bash(dotnet clean *)"
+      "Bash(dotnet clean *)",
+      "Bash(Select-Object -Last 15)",
+      "Bash(Get-ChildItem -Recurse -Depth 3 \"d:\\\\code\\\\projectFrameCut.Drawing\\\\projectFrameCut.Drawing.Text\")",
+      "Bash(Select-Object FullName, Length)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(Get-ChildItem *)"
     ]
   }
 }

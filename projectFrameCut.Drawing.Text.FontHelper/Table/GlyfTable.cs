@@ -54,13 +54,20 @@ public sealed class Glyph
 
 internal static class GlyfTable
 {
+    /// <summary>
+    /// Callback for applying variation data to a glyph. Used for variable font support.
+    /// Called for each simple glyph (including component glyphs of composites).
+    /// </summary>
+    internal delegate Glyph? VariationApplier(ushort glyphIndex, Glyph? parsedGlyph);
+
     public static Glyph? ParseGlyph(
         ReadOnlySpan<byte> glyfTableData,
         LocaData loca,
         ushort glyphIndex,
         SfntReader sfnt,
         MaxpData maxp,
-        int recursionDepth = 0)
+        int recursionDepth = 0,
+        VariationApplier? onGlyphParsed = null)
     {
         uint offset = loca.GetGlyphOffset(glyphIndex);
         uint length = loca.GetGlyphLength(glyphIndex);
@@ -91,16 +98,28 @@ internal static class GlyfTable
         short flippedYMin = (short)(-yMax);
         short flippedYMax = (short)(-yMin);
 
+        Glyph? result;
+
         if (numberOfContours > 0)
         {
-            return ParseSimpleGlyph(glyphData, numberOfContours,
+            result = ParseSimpleGlyph(glyphData, numberOfContours,
                 xMin, flippedYMin, xMax, flippedYMax);
         }
         else
         {
-            return ParseCompoundGlyph(glyphData, sfnt, loca, maxp, recursionDepth,
-                xMin, flippedYMin, xMax, flippedYMax);
+            result = ParseCompoundGlyph(glyphData, sfnt, loca, maxp, recursionDepth,
+                xMin, flippedYMin, xMax, flippedYMax, onGlyphParsed);
         }
+
+        // Apply variation if callback provided (for composite glyphs,
+        // each component is varied individually during recursion;
+        // for simple glyphs, the variation is applied here).
+        if (onGlyphParsed != null && result != null && !result.IsEmpty)
+        {
+            result = onGlyphParsed(glyphIndex, result);
+        }
+
+        return result;
     }
 
     private static Glyph ParseSimpleGlyph(
@@ -220,7 +239,8 @@ internal static class GlyfTable
         LocaData loca,
         MaxpData maxp,
         int recursionDepth,
-        short xMin, short yMin, short xMax, short yMax)
+        short xMin, short yMin, short xMax, short yMax,
+        VariationApplier? onGlyphParsed = null)
     {
         int offset = 10; // After numberOfContours + bbox
         ushort maxDepth = maxp.MaxComponentDepth;
@@ -287,7 +307,7 @@ internal static class GlyfTable
 
                 Glyph? componentGlyph = ParseGlyph(
                     glyfTableData, loca, componentGlyphIndex,
-                    sfnt, maxp, recursionDepth + 1);
+                    sfnt, maxp, recursionDepth + 1, onGlyphParsed);
 
                 if (componentGlyph != null && !componentGlyph.IsEmpty)
                 {
