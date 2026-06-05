@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace projectFrameCut.Drawing.Text
+namespace projectFrameCut.Drawing.Text.Entry
 {
     public record TextEntry
     {
@@ -42,25 +42,9 @@ namespace projectFrameCut.Drawing.Text
         /// Key = axis tag (e.g., "wght"), Value = desired coordinate (e.g., 700).
         /// Only used when the font supports OpenType Font Variations.
         /// </summary>
-        [JsonIgnore]
         public Dictionary<string, float> VariationAxes { get; set; } = new Dictionary<string, float>();
 
         [JsonExtensionData]
         public Dictionary<string, object> ExtraData { get; set; } = new Dictionary<string, object>();
-    }
-
-    public enum TextAlignment
-    {
-        Left,
-        Center,
-        Right
-    }
-
-    [Flags]
-    public enum TextDecoration
-    {
-        None = 0,
-        Underline = 1,
-        Strikethrough = 2,
     }
 }

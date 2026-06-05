@@ -120,68 +120,77 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
             return _cached = [];
 
         float scale = FontSize / _unitsPerEm;
-        bool fill = FillA > 0f;
-        bool stroke = StrokeThickness > 0f && StrokeA > 0f;
+        bool hasFill = FillA > 0f;
+        bool hasStroke = StrokeThickness > 0f && StrokeA > 0f;
 
-        if (!fill && !stroke)
+        if (!hasFill && !hasStroke)
             return _cached = [];
+
+        // Flatten ALL contours into polygons using the same subdivision.
+        var flattened = new List<Point>[_glyph.Contours.Length];
+        for (int i = 0; i < _glyph.Contours.Length; i++)
+        {
+            var pts = FlattenContour(_glyph.Contours[i], scale);
+            flattened[i] = pts.Count >= 3 ? pts : null!;
+        }
+
+        // Classify: outer (negative signed area) vs. holes (positive signed area).
+        // Use the contour with largest absolute area as the main polygon.
+        int mainIndex = -1;
+        float bestAbs = -1f;
+        for (int i = 0; i < flattened.Length; i++)
+        {
+            if (flattened[i] is not { Count: >= 3 }) continue;
+            float absA = MathF.Abs(SignedArea(flattened[i]));
+            if (absA > bestAbs) { bestAbs = absA; mainIndex = i; }
+        }
+
+        if (mainIndex < 0)
+            return _cached = [];
+
+        var holesList = new List<Point[]>();
+        for (int i = 0; i < flattened.Length; i++)
+        {
+            if (i == mainIndex) continue;
+            if (flattened[i] is { Count: >= 3 } h)
+                holesList.Add(h.ToArray());
+        }
 
         var segments = new List<VectorSegment>();
 
-        if (fill)
+        // Fill: single polygon with holes.
+        if (hasFill)
         {
-            // Flatten every contour and group by winding direction so the
-            // scanline even-odd fill punchs holes correctly.
-            var flattened = new List<Point>[_glyph.Contours.Length];
-            for (int i = 0; i < _glyph.Contours.Length; i++)
+            segments.Add(new PolygonVectorSegment
             {
-                var pts = FlattenContour(_glyph.Contours[i], scale);
-                flattened[i] = pts.Count >= 3 ? pts : null!;
-            }
+                Points = [.. flattened[mainIndex]],
+                Holes = holesList.Count > 0 ? holesList.ToArray() : null,
+                FillR = FillR,
+                FillG = FillG,
+                FillB = FillB,
+                FillA = FillA,
+                Thickness = 0,
+                StrokeA = 0f,
+            });
+        }
 
-            // Classify: outer (negative signed area) vs. holes (positive signed area).
-            // Use the contour with largest absolute area as the main polygon.
-            int mainIndex = -1;
-            float bestAbs = -1f;
+        // Stroke: EVERY contour (outer + holes) as individual polygons,
+        // using the exact same flattened vertices as the fill — no gaps, no seams.
+        if (hasStroke)
+        {
             for (int i = 0; i < flattened.Length; i++)
             {
                 if (flattened[i] is not { Count: >= 3 }) continue;
-                float absA = MathF.Abs(SignedArea(flattened[i]));
-                if (absA > bestAbs) { bestAbs = absA; mainIndex = i; }
-            }
-
-            if (mainIndex >= 0)
-            {
-                var holesList = new List<Point[]>();
-                for (int i = 0; i < flattened.Length; i++)
-                {
-                    if (i == mainIndex) continue;
-                    if (flattened[i] is { Count: >= 3 } h)
-                        holesList.Add(h.ToArray());
-                }
-
                 segments.Add(new PolygonVectorSegment
                 {
-                    Points = [.. flattened[mainIndex]],
-                    Holes = holesList.Count > 0 ? holesList.ToArray() : null,
+                    Points = flattened[i].ToArray(),
+                    FillA = 0f,
                     Thickness = StrokeThickness,
-                    StrokeR = stroke ? StrokeR : (ushort)0,
-                    StrokeG = stroke ? StrokeG : (ushort)0,
-                    StrokeB = stroke ? StrokeB : (ushort)0,
-                    StrokeA = stroke ? StrokeA : 0f,
-                    FillR = FillR,
-                    FillG = FillG,
-                    FillB = FillB,
-                    FillA = FillA,
+                    StrokeR = StrokeR,
+                    StrokeG = StrokeG,
+                    StrokeB = StrokeB,
+                    StrokeA = StrokeA,
                 });
-            }
-        }
-        else
-        {
-            foreach (var contour in _glyph.Contours)
-            {
-                // Stroke-only: preserve curve types for higher-quality outlines.
-                EmitContourSegments(contour, scale, segments);
             }
         }
 
@@ -189,130 +198,7 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
     }
 
     // ──────────────────────────────────────────────
-    //  Private — stroke-only (curve-preserving)
-    // ──────────────────────────────────────────────
-
-    private void EmitContourSegments(GlyphPoint[] contour, float scale, List<VectorSegment> result)
-    {
-        int n = contour.Length;
-        if (n < 2) return;
-
-        // Locate the first on-curve point.
-        int firstOnCurve = -1;
-        for (int i = 0; i < n; i++)
-        {
-            if (contour[i].OnCurve) { firstOnCurve = i; break; }
-        }
-
-        float curX, curY, firstX, firstY;
-        int idx;
-
-        if (firstOnCurve >= 0)
-        {
-            var p = contour[firstOnCurve];
-            curX = p.X * scale;
-            curY = p.Y * scale;
-            idx = (firstOnCurve + 1) % n;
-        }
-        else
-        {
-            // All off-curve: synthetic on-curve at midpoint of last and first.
-            curX = (contour[n - 1].X + contour[0].X) * 0.5f * scale;
-            curY = (contour[n - 1].Y + contour[0].Y) * 0.5f * scale;
-            idx = 0;
-        }
-
-        firstX = curX;
-        firstY = curY;
-
-        var common = new
-        {
-            Thickness = StrokeThickness,
-            StrokeR, StrokeG, StrokeB, StrokeA,
-            FillR = (ushort)0, FillG = (ushort)0, FillB = (ushort)0, FillA = 0f,
-        };
-
-        int consumed = 0;
-        while (consumed < n)
-        {
-            var p1 = contour[idx];
-
-            if (p1.OnCurve)
-            {
-                result.Add(new StraightLineVectorSegment
-                {
-                    X1 = curX, Y1 = curY,
-                    X2 = p1.X * scale, Y2 = p1.Y * scale,
-                    Thickness = common.Thickness,
-                    StrokeR = common.StrokeR, StrokeG = common.StrokeG,
-                    StrokeB = common.StrokeB, StrokeA = common.StrokeA,
-                });
-                curX = p1.X * scale;
-                curY = p1.Y * scale;
-                idx = (idx + 1) % n;
-                consumed++;
-            }
-            else
-            {
-                var p2 = contour[(idx + 1) % n];
-                float p2x = p2.X * scale;
-                float p2y = p2.Y * scale;
-
-                if (p2.OnCurve)
-                {
-                    // Quadratic Bézier: cur → p1 (control) → p2 (end)
-                    result.Add(new QuadraticBezierVectorSegment
-                    {
-                        X1 = curX, Y1 = curY,
-                        X2 = p1.X * scale, Y2 = p1.Y * scale,
-                        X3 = p2x, Y3 = p2y,
-                        Thickness = common.Thickness,
-                        StrokeR = common.StrokeR, StrokeG = common.StrokeG,
-                        StrokeB = common.StrokeB, StrokeA = common.StrokeA,
-                    });
-                    curX = p2x;
-                    curY = p2y;
-                    idx = (idx + 2) % n;
-                    consumed += 2;
-                }
-                else
-                {
-                    // Two consecutive off-curve: implicit on-curve at midpoint.
-                    float midX = (p1.X + p2.X) * 0.5f * scale;
-                    float midY = (p1.Y + p2.Y) * 0.5f * scale;
-                    result.Add(new QuadraticBezierVectorSegment
-                    {
-                        X1 = curX, Y1 = curY,
-                        X2 = p1.X * scale, Y2 = p1.Y * scale,
-                        X3 = midX, Y3 = midY,
-                        Thickness = common.Thickness,
-                        StrokeR = common.StrokeR, StrokeG = common.StrokeG,
-                        StrokeB = common.StrokeB, StrokeA = common.StrokeA,
-                    });
-                    curX = midX;
-                    curY = midY;
-                    idx = (idx + 1) % n;
-                    consumed++;
-                }
-            }
-        }
-
-        // Closing the contour.
-        if (curX != firstX || curY != firstY)
-        {
-            result.Add(new StraightLineVectorSegment
-            {
-                X1 = curX, Y1 = curY,
-                X2 = firstX, Y2 = firstY,
-                Thickness = common.Thickness,
-                StrokeR = common.StrokeR, StrokeG = common.StrokeG,
-                StrokeB = common.StrokeB, StrokeA = common.StrokeA,
-            });
-        }
-    }
-
-    // ──────────────────────────────────────────────
-    //  Private — filled (flatten curves to polygon)
+    //  Private — flatten curves to polygon
     // ──────────────────────────────────────────────
 
     /// <summary>
@@ -417,7 +303,13 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
         float x0, float y0, float x1, float y1, float x2, float y2,
         List<Point> result, int depth)
     {
-        if (depth > 12) return;
+        // 深度上限：超过后强制把当前子曲线的端点加入结果，避免多边形
+        // 因漏点而无法闭合。
+        if (depth > 16)
+        {
+            result.Add(new Point(x2, y2));
+            return;
+        }
 
         float dx = x2 - x0;
         float dy = y2 - y0;
@@ -431,7 +323,9 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
 
         float t = ((x1 - x0) * dx + (y1 - y0) * dy) / len2;
         float d = MathF.Abs((y1 - y0) - t * dy) + MathF.Abs((x1 - x0) - t * dx);
-        if (d * d < len2 * 0.001f)
+        // 阈值从 0.001f 收紧到 0.0000001f（控制点到弦的曼哈顿距离² < 弦长² × 0.0000001），
+        // 偏差约 0.01% 弦长，对常规渲染尺寸是亚像素级。
+        if (d * d < len2 * 0.0000001f)
         {
             result.Add(new Point(x2, y2));
             return;
@@ -442,7 +336,8 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
         float mx12 = (x1 + x2) * 0.5f, my12 = (y1 + y2) * 0.5f;
         float mx012 = (mx01 + mx12) * 0.5f, my012 = (my01 + my12) * 0.5f;
 
-        result.Add(new Point(mx012, my012));
+        // Note: do NOT add mx012 here — the left recursive call will add it
+        // as its endpoint when it terminates, avoiding duplicate vertices.
         FlattenQuadraticBezier(x0, y0, mx01, my01, mx012, my012, result, depth + 1);
         FlattenQuadraticBezier(mx012, my012, mx12, my12, x2, y2, result, depth + 1);
     }

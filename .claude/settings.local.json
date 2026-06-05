@@ -1,22 +1,31 @@
 {
   "permissions": {
     "allow": [
-      "Bash(Get-ChildItem -Path \"d:\\\\code\\\\projectFrameCut.Drawing\" -Recurse -Filter \"*.csproj\")",
-      "Bash(Select-Object -ExpandProperty FullName)",
-      "Bash(git *)",
-      "Bash(dotnet build *)",
-      "Bash(dotnet test *)",
-      "PowerShell(dotnet build *)",
-      "WebSearch",
-      "Bash(Get-ChildItem -Recurse -Directory \"d:\\\\code\\\\projectFrameCut.Drawing\")",
-      "Bash(Select-Object FullName)",
-      "Bash(Get-Content *)",
-      "Bash(dotnet clean *)",
-      "Bash(Select-Object -Last 15)",
-      "Bash(Get-ChildItem -Recurse -Depth 3 \"d:\\\\code\\\\projectFrameCut.Drawing\\\\projectFrameCut.Drawing.Text\")",
-      "Bash(Select-Object FullName, Length)",
-      "Bash(Format-Table -AutoSize)",
-      "Bash(Get-ChildItem *)"
+        "Bash(dotnet build *)",
+        "Bash(splc-edit *)",
+        "Bash(dotnet tool *)",
+        "Bash(dotnet test *)",
+        "Bash(xxd)",
+        "Bash(findstr Value)",
+        "Bash(dotnet restore *)",
+        "Bash(cd *)",
+        "PowerShell(cd *)",
+        "PowerShell(dotnet build *)",
+        "PowerShell(Get-Content *)",
+        "PowerShell(Select-Object *)",
+        "PowerShell(Select-String -Pattern \"error|Error|错误\")",
+        "Bash(dir *)",
+        "WebFetch(domain:www.nuget.org)"
+    ],
+    "deny": [
+      "Bash(Select-*)",
+      "Bash(Get-*)",
+      "Bash(Set-*)",
+      "Bash(git commit *)",
+      "Powershell(git commit *)"
     ]
+  },
+  "skillOverrides": {
+    "lsp-setup": "off"
   }
 }

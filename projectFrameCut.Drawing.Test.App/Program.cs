@@ -1,8 +1,9 @@
-﻿using projectFrameCut.Drawing.Base;
+using projectFrameCut.Drawing.Base;
 using projectFrameCut.Drawing.Base.Picture;
 using projectFrameCut.Drawing.Processing.Cropping;
 using projectFrameCut.Drawing.Processing.Resizing;
 using projectFrameCut.Drawing.Text;
+using projectFrameCut.Drawing.Text.Entry;
 using projectFrameCut.Drawing.Text.FontHelper;
 using projectFrameCut.Drawing.Text.FontHelper.Table;
 using projectFrameCut.Drawing.Text.Typology;
@@ -200,21 +201,45 @@ namespace projectFrameCut.Drawing.Test.App
                         if (font is null) return;
                         Console.Write("Input character to convert to vector (default 'A'): ");
                         var str = Console.ReadLine();
-                        var entry = new TextEntry
+                        var entry = new RichTextEntry
                         {
                             Text = string.IsNullOrEmpty(str) ? "A" : str,
                             FontName = font.FamilyName,
-                            FontSize = 0.1f,
+                            FontSize = 0.3f,
                             FillR = 0,
                             FillG = 0,
                             FillB = 0,
                             FillA = 1f,
-                            X = 0.5f,
+                            X = 0.005f,
                             Y = 0.5f,
+                            StyledRanges = Enumerable.Range(0, string.IsNullOrEmpty(str) ? 1 : str.Length)
+                                .Select(i => new StyledRange
+                                {
+                                    Start = i,
+                                    Length = 1,
+                                    Style = new CharacterStyle
+                                    {
+                                        FontSize = 0.05f + 0.25f * Random.Shared.NextSingle(),
+                                        FillR = (ushort?)Random.Shared.Next(0, ushort.MaxValue),
+                                        FillG = (ushort?)Random.Shared.Next(0, ushort.MaxValue),
+                                        FillB = (ushort?)Random.Shared.Next(0, ushort.MaxValue),
+                                        FillA = Random.Shared.NextSingle(),
+                                        StrokeR = (ushort?)Random.Shared.Next(0, ushort.MaxValue),
+                                        StrokeG = (ushort?)Random.Shared.Next(0, ushort.MaxValue),
+                                        StrokeB = (ushort?)Random.Shared.Next(0, ushort.MaxValue),
+                                        StrokeA = Random.Shared.NextSingle(),
+                                        Decoration = Enum.GetValues<TextDecoration>().Cast<TextDecoration>().Where(d => d != TextDecoration.None).OrderBy(_ => Random.Shared.Next()).FirstOrDefault(),
+                                    }
+                                })
+                                .ToList(),
+                            VariationAxes = new Dictionary<string, float> { { "wght", 900 } }
                         };
-                        var size = NormalTypesettingEngine.FromEntry(entry).Measure(str, font);
-                        var canvas = TextRender.Render(entry, font, []);
-                        var svg = SVGToVectorElement.ExportToSvg(canvas, (int)(size.width * 250), (int)(size.height * 500));
+                        var size = new NormalTypesettingEngine().Measure(entry, font);
+                        var canvas = new NormalTypesettingEngine().Layout(entry, font);
+                        const float svgScale = 8000f;
+                        var maxDim = Math.Max(size.width, size.height);
+                        var svgSize = Math.Max(200, (int)(maxDim * svgScale));
+                        var svg = SVGToVectorElement.ExportToSvg(canvas, svgSize, svgSize);
                         var outDir = AppDomain.CurrentDomain.BaseDirectory;
                         var svgPath = Path.Combine(outDir, $"result-{DateTime.Now:yyyyMMddHHmmss}.svg");
                         File.WriteAllText(svgPath, svg);

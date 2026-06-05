@@ -15,6 +15,10 @@
     "Glyph2VectPicture": {
       "commandName": "Project",
       "commandLineArgs": "glyph2VectPicture"
+    },
+    "WSL": {
+      "commandName": "WSL2",
+      "distributionName": ""
     }
   }
 }

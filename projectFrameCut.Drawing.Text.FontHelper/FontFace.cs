@@ -14,10 +14,14 @@ public sealed class FontFace : IDisposable
     private readonly CmapData _cmap;
     private readonly LocaData? _loca;
     private readonly byte[]? _glyfData;
+    private readonly CffTable? _cff;
     private readonly VariationEngine? _variation;
     private readonly IReadOnlySet<TargetLanguage> _targetLanguages;
     private readonly IReadOnlyDictionary<TargetLanguage, string> _localizedNames;
     private bool _disposed;
+
+    /// <summary>Whether this font uses CFF outlines (PostScript-based OTF).</summary>
+    public bool IsCff => _cff != null;
 
     internal FontFace(SfntReader sfnt)
     {
@@ -39,6 +43,12 @@ public sealed class FontFace : IDisposable
             : null;
 
         _glyfData = sfnt.HasTable("glyf") ? sfnt.GetTableDataCopy("glyf") : null;
+
+        // Parse CFF table if present (CFF-based OTFs)
+        _cff = sfnt.HasTable("CFF ")
+            ? CffTable.Load(sfnt.GetTableDataCopy("CFF "), _maxp.NumGlyphs)
+            : null;
+
         _cmap = CmapTable.Parse(sfnt.GetTableData("cmap"));
 
         // Optional tables
@@ -215,10 +225,21 @@ public sealed class FontFace : IDisposable
         if (glyphIndex >= _maxp.NumGlyphs)
             throw new ArgumentOutOfRangeException(nameof(glyphIndex));
 
+        // CFF-based font
+        if (_cff != null)
+        {
+            Glyph? glyph = _cff.ParseGlyph(glyphIndex);
+            if (glyph != null)
+            {
+                glyph.AdvanceWidth = _hmtx.GetAdvanceWidth(glyphIndex);
+                glyph.LeftSideBearing = _hmtx.GetLeftSideBearing(glyphIndex);
+            }
+            return glyph;
+        }
+
+        // TrueType-based font
         if (_loca == null || _glyfData == null)
-            throw new InvalidFontFileException(
-                "This font uses CFF outlines and does not support glyph-level access. " +
-                "Use GetAdvanceWidth() for metrics instead.");
+            return null;
 
         return ParseAndMeasureGlyph(glyphIndex, null);
     }
@@ -238,10 +259,20 @@ public sealed class FontFace : IDisposable
         if (glyphIndex >= _maxp.NumGlyphs)
             throw new ArgumentOutOfRangeException(nameof(glyphIndex));
 
+        // CFF fonts don't support gvar-style variations (use CFF2 instead)
+        if (_cff != null)
+        {
+            Glyph? glyph = _cff.ParseGlyph(glyphIndex);
+            if (glyph != null)
+            {
+                glyph.AdvanceWidth = _hmtx.GetAdvanceWidth(glyphIndex);
+                glyph.LeftSideBearing = _hmtx.GetLeftSideBearing(glyphIndex);
+            }
+            return glyph;
+        }
+
         if (_loca == null || _glyfData == null)
-            throw new InvalidFontFileException(
-                "This font uses CFF outlines and does not support glyph-level access. " +
-                "Use GetAdvanceWidth() for metrics instead.");
+            return null;
 
         return ParseAndMeasureGlyph(glyphIndex, variationApplier);
     }

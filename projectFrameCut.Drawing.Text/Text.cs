@@ -1,4 +1,5 @@
-﻿using projectFrameCut.Drawing.Text.FontHelper;
+using projectFrameCut.Drawing.Text.Entry;
+using projectFrameCut.Drawing.Text.FontHelper;
 using projectFrameCut.Drawing.Text.Typology;
 using projectFrameCut.Drawing.Vector;
 
@@ -7,7 +8,7 @@ namespace projectFrameCut.Drawing.Text
     /// <summary>
     /// A simple class for rendering text into vector graphics using a provided <see cref="FontFace"/>.
     /// </summary>
-    public static class TextRender
+    internal static class TextRender
     {
         /// <summary>
         /// Render <paramref name="text"/> into a <see cref="VectorPicture"/> sized to
@@ -16,8 +17,10 @@ namespace projectFrameCut.Drawing.Text
         /// </summary>
         public static VectorPicture Render(string text, FontFace font, double targetWidth, double targetHeight)
         {
-            var ts = new NormalTypesettingEngine
+            var entry = new TextEntry
             {
+                Text = text,
+                FontName = font.FamilyName,
                 FontSize = (float)Math.Min(targetWidth, targetHeight) * 0.1f,
                 FillR = 0,
                 FillG = 0,
@@ -25,7 +28,8 @@ namespace projectFrameCut.Drawing.Text
                 FillA = 1f,
             };
 
-            return ts.Layout(text, font);
+            var ts = new NormalTypesettingEngine();
+            return ts.Layout(entry, font);
         }
 
         /// <summary>
@@ -34,24 +38,7 @@ namespace projectFrameCut.Drawing.Text
         /// </summary>
         public static VectorPicture Render(TextEntry entry, FontFace primaryFont, IList<FontFace>? fallbackFonts = null)
         {
-            var ts = new NormalTypesettingEngine
-            {
-                FontSize = entry.FontSize,
-                FillR = entry.FillR,
-                FillG = entry.FillG,
-                FillB = entry.FillB,
-                FillA = entry.FillA,
-                StrokeR = entry.StrokeR,
-                StrokeG = entry.StrokeG,
-                StrokeB = entry.StrokeB,
-                StrokeA = entry.StrokeA,
-                StrokeThickness = entry.StrokeThickness,
-                CharacterSpacing = entry.CharacterSpacing,
-                WordSpacing = entry.WordSpacing,
-                LineSpacing = entry.LineSpacing,
-                Alignment = entry.Alignment,
-                VariationAxes = new Dictionary<string, float>(entry.VariationAxes)
-            };
+            var ts = new NormalTypesettingEngine();
 
             if (fallbackFonts is not null)
             {
@@ -59,7 +46,7 @@ namespace projectFrameCut.Drawing.Text
                     ts.FallbackFonts.Add(fb);
             }
 
-            var picture = ts.Layout(entry.Text, primaryFont);
+            var picture = ts.Layout(entry, primaryFont);
 
             // Position elements according to the TextEntry coordinates
             foreach (var element in picture.Elements)

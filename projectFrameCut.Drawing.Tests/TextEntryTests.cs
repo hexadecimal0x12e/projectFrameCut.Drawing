@@ -1,4 +1,4 @@
-using projectFrameCut.Drawing.Text;
+using projectFrameCut.Drawing.Text.Entry;
 
 namespace projectFrameCut.Drawing.Tests;
 

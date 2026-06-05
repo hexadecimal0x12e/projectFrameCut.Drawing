@@ -1,62 +1,18 @@
-using projectFrameCut.Drawing.Vector;
+using projectFrameCut.Drawing.Base;
+using projectFrameCut.Drawing.Text.Entry;
 using projectFrameCut.Drawing.Text.FontHelper;
 using projectFrameCut.Drawing.Text.FontHelper.Table;
+using projectFrameCut.Drawing.Vector;
 
 namespace projectFrameCut.Drawing.Text.Typology;
 
 /// <summary>
-/// Lays out a string of text using a <see cref="FontFace"/> and produces a
-/// <see cref="VectorPicture"/> where each visible glyph is a positioned
-/// <see cref="GlyphCanvasElement"/>.
+/// Lays out text from a <see cref="TextEntry"/> (or <see cref="RichTextEntry"/>)
+/// using a primary <see cref="FontFace"/> and produces a <see cref="VectorPicture"/>
+/// where each visible glyph is a positioned <see cref="GlyphCanvasElement"/>.
 /// </summary>
 public class NormalTypesettingEngine : ITypesettingEngine
 {
-    // ──────────────────────────────────────────────
-    //  Font & size
-    // ──────────────────────────────────────────────
-
-    /// <summary>Desired glyph height in normalized canvas coordinates (0–1).</summary>
-    public float FontSize { get; set; } = 0.1f;
-
-    // ──────────────────────────────────────────────
-    //  Fill
-    // ──────────────────────────────────────────────
-
-    public ushort FillR { get; set; }
-    public ushort FillG { get; set; }
-    public ushort FillB { get; set; }
-    public float FillA { get; set; } = 1f;
-
-    // ──────────────────────────────────────────────
-    //  Stroke (outline)
-    // ──────────────────────────────────────────────
-
-    public ushort StrokeR { get; set; }
-    public ushort StrokeG { get; set; }
-    public ushort StrokeB { get; set; }
-    public float StrokeA { get; set; }
-    public float StrokeThickness { get; set; }
-
-    // ──────────────────────────────────────────────
-    //  Spacing  (all values are in normalized 0-1 canvas coordinates)
-    // ──────────────────────────────────────────────
-
-    /// <summary>Extra horizontal space added after every visible character.</summary>
-    public float CharacterSpacing { get; set; }
-
-    /// <summary>Extra horizontal space added after each space character (on top of the space glyph's own advance width).</summary>
-    public float WordSpacing { get; set; }
-
-    /// <summary>Extra vertical space added on top of <c>FontSize</c> for each line. Line height = FontSize x (1 + LineSpacing).</summary>
-    public float LineSpacing { get; set; } = 0.3f;
-
-    // ──────────────────────────────────────────────
-    //  Alignment
-    // ──────────────────────────────────────────────
-
-
-    public TextAlignment Alignment { get; set; } = TextAlignment.Left;
-
     // ──────────────────────────────────────────────
     //  Font fallback
     // ──────────────────────────────────────────────
@@ -69,74 +25,60 @@ public class NormalTypesettingEngine : ITypesettingEngine
     public IList<FontFace> FallbackFonts { get; set; } = new List<FontFace>();
 
     // ──────────────────────────────────────────────
-    //  Variable font variation axes
-    // ──────────────────────────────────────────────
-
-    /// <summary>
-    /// Variation axis coordinates for variable font support.
-    /// Key = axis tag (e.g., "wght"), Value = desired coordinate (e.g., 700).
-    /// </summary>
-    public Dictionary<string, float> VariationAxes { get; set; } = new Dictionary<string, float>();
-
-    // ──────────────────────────────────────────────
     //  Public API
     // ──────────────────────────────────────────────
 
     /// <summary>
-    /// Lay out <paramref name="text"/> using the specified <paramref name="font"/>
-    /// (and any <see cref="FallbackFonts"/>).
-    /// Line-breaks (LF / \n) start a new line. The result is a <see cref="VectorPicture"/>
-    /// with one <see cref="GlyphCanvasElement"/> per visible glyph.
+    /// Lay out the text in <paramref name="entry"/> using the specified
+    /// <paramref name="font"/> (and any <see cref="FallbackFonts"/>).
+    /// All rendering parameters are read from the entry.
     /// </summary>
-    /// <remarks>
-    /// The text baseline starts at (0, 0), i.e. the top-left of the canvas.
-    /// Use <see cref="VectorCanvasElement.RelativeX"/> and <see cref="VectorCanvasElement.RelativeY"/>
-    /// on each element (or overlay the whole picture via <c>VectorPicture.Overlay()</c>
-    /// with an offset picture) to position the result.
-    /// </remarks>
-    public VectorPicture Layout(string text, FontFace font)
+    public VectorPicture Layout(TextEntry entry, FontFace font)
     {
         var result = new VectorPicture();
-        if (string.IsNullOrEmpty(text))
+        if (string.IsNullOrEmpty(entry.Text))
             return result;
 
-        float lineHeight = FontSize * (1f + LineSpacing);
+        float lineHeight = entry.FontSize * (1f + entry.LineSpacing);
 
-        // Pre-cache the space glyph's advance width from the primary font
         ushort spaceGlyphIndex = font.GetGlyphIndex(' ');
         float spaceAdvanceWidth = font.GetAdvanceWidth(spaceGlyphIndex) *
-                                  (FontSize / font.UnitsPerEm);
+                                  (entry.FontSize / font.UnitsPerEm);
 
-        var lines = text.Split('\n');
+        var lines = entry.Text.Split('\n');
         float baselineY = 0;
 
         foreach (var line in lines)
         {
-            LayoutLine(line, font, spaceAdvanceWidth, baselineY, result);
+            LayoutLine(line, font, spaceAdvanceWidth, baselineY, result, entry);
             baselineY += lineHeight;
+        }
+
+        foreach (var element in result.Elements)
+        {
+            element.RelativeX += entry.X;
+            element.RelativeY += entry.Y;
+            element.LayerIndex = entry.LayerIndex;
+            element.Rotation = entry.Rotation;
         }
 
         return result;
     }
 
-    // ──────────────────────────────────────────────
-    //  Measurement
-    // ──────────────────────────────────────────────
-
     /// <inheritdoc/>
-    public (float width, float height) Measure(string text, FontFace font)
+    public (float width, float height) Measure(TextEntry entry, FontFace font)
     {
-        if (string.IsNullOrEmpty(text))
+        if (string.IsNullOrEmpty(entry.Text))
             return (0f, 0f);
 
-        float lineHeight = FontSize * (1f + LineSpacing);
+        float lineHeight = entry.FontSize * (1f + entry.LineSpacing);
 
         ushort spaceGlyphIndex = font.GetGlyphIndex(' ');
         float spaceAdvanceWidth = font.GetAdvanceWidth(spaceGlyphIndex) *
-                                  (FontSize / font.UnitsPerEm);
-        float spaceTotalAdvance = spaceAdvanceWidth + WordSpacing + CharacterSpacing;
+                                  (entry.FontSize / font.UnitsPerEm);
 
-        var lines = text.Split('\n');
+        var rich = entry as RichTextEntry;
+        var lines = entry.Text.Split('\n');
         float maxWidth = 0f;
 
         foreach (var line in lines)
@@ -147,20 +89,43 @@ public class NormalTypesettingEngine : ITypesettingEngine
             for (int i = 0; i < line.Length; i++)
             {
                 char c = line[i];
+
+                // Per-character style overrides (RichTextEntry)
+                float charFontSize = entry.FontSize;
+                float charCharSpacing = entry.CharacterSpacing;
+                float charWordSpacing = entry.WordSpacing;
+                var charVariationAxes = entry.VariationAxes;
+
+                if (rich is not null)
+                {
+                    foreach (var range in rich.GetRangesAt(i))
+                    {
+                        var s = range.Style;
+                        if (s.FontSize.HasValue) charFontSize = s.FontSize.Value;
+                        if (s.CharacterSpacing.HasValue) charCharSpacing = s.CharacterSpacing.Value;
+                        if (s.WordSpacing.HasValue) charWordSpacing = s.WordSpacing.Value;
+                        if (s.VariationAxes is not null) charVariationAxes = s.VariationAxes;
+                    }
+                }
+
                 if (c == ' ')
                 {
-                    lineWidth += spaceTotalAdvance;
+                    float spaceScale = charFontSize / entry.FontSize;
+                    lineWidth += spaceAdvanceWidth * spaceScale + charWordSpacing + charCharSpacing;
                 }
                 else
                 {
                     var (rFont, rIdx) = ResolveChar(c, font);
 
-                    // Apply variable font variation axes if supported
-                    if (rFont.IsVariableFont && VariationAxes.Count > 0)
-                        rFont.SetVariationAxes(VariationAxes);
+                    if (rFont.IsVariableFont && charVariationAxes.Count > 0)
+                        rFont.SetVariationAxes(charVariationAxes);
 
-                    float charScale = FontSize / rFont.UnitsPerEm;
-                    lineWidth += rFont.GetVariedAdvanceWidth(rIdx) * charScale + CharacterSpacing;
+                    float charScale = charFontSize / rFont.UnitsPerEm;
+                    float advance = rFont.GetVariedAdvanceWidth(rIdx) * charScale + charCharSpacing;
+                    // 兜底：同 LayoutLine，防止字体返回 0 把 lineWidth 算成 0
+                    if (advance < charFontSize * 0.1f)
+                        advance = charFontSize;
+                    lineWidth += advance;
                 }
             }
 
@@ -198,29 +163,49 @@ public class NormalTypesettingEngine : ITypesettingEngine
                 return (fb, idx);
         }
 
-        // Ultimate fallback: render the primary font's .notdef
         return (primaryFont, primaryFont.GetGlyphIndex(c));
     }
 
     private void LayoutLine(
         string line, FontFace primaryFont,
-        float spaceAdvanceWidth, float baselineY, VectorPicture result)
+        float spaceAdvanceWidth, float baselineY, VectorPicture result, TextEntry entry)
     {
         int n = line.Length;
         if (n == 0) return;
 
-        // ── First pass: measure every character (resolve font per-char) ──
+        var rich = entry as RichTextEntry;
+
         var charAdvances = new float[n];
         var resolvedFonts = new FontFace?[n];
         var resolvedIndices = new ushort[n];
 
+        // ── First pass: measure every character ──
         for (int i = 0; i < n; i++)
         {
             char c = line[i];
 
+            // Per-character style overrides from RichTextEntry
+            float charFontSize = entry.FontSize;
+            float charCharSpacing = entry.CharacterSpacing;
+            float charWordSpacing = entry.WordSpacing;
+            var charVariationAxes = entry.VariationAxes;
+
+            if (rich is not null)
+            {
+                foreach (var range in rich.GetRangesAt(i))
+                {
+                    var s = range.Style;
+                    if (s.FontSize.HasValue) charFontSize = s.FontSize.Value;
+                    if (s.CharacterSpacing.HasValue) charCharSpacing = s.CharacterSpacing.Value;
+                    if (s.WordSpacing.HasValue) charWordSpacing = s.WordSpacing.Value;
+                    if (s.VariationAxes is not null) charVariationAxes = s.VariationAxes;
+                }
+            }
+
             if (c == ' ')
             {
-                charAdvances[i] = spaceAdvanceWidth + WordSpacing + CharacterSpacing;
+                float spaceScale = charFontSize / entry.FontSize;
+                charAdvances[i] = spaceAdvanceWidth * spaceScale + charWordSpacing + charCharSpacing;
                 continue;
             }
 
@@ -228,12 +213,16 @@ public class NormalTypesettingEngine : ITypesettingEngine
             resolvedFonts[i] = rFont;
             resolvedIndices[i] = rIdx;
 
-            // Apply variable font variation axes if supported
-            if (rFont.IsVariableFont && VariationAxes.Count > 0)
-                rFont.SetVariationAxes(VariationAxes);
+            if (rFont.IsVariableFont && charVariationAxes.Count > 0)
+                rFont.SetVariationAxes(charVariationAxes);
 
-            float charScale = FontSize / rFont.UnitsPerEm;
-            charAdvances[i] = rFont.GetVariedAdvanceWidth(rIdx) * charScale + CharacterSpacing;
+            float charScale = charFontSize / rFont.UnitsPerEm;
+            float advance = rFont.GetVariedAdvanceWidth(rIdx) * charScale + charCharSpacing;
+            // 兜底：防止字体返回 0（或可变字体的 variation delta 把 advance 算成 0），
+            // 此时光标原地不动会导致所有字形叠在同一点。用 charFontSize 兜一个最小前进量。
+            if (advance < charFontSize * 0.1f)
+                advance = charFontSize;
+            charAdvances[i] = advance;
         }
 
         // ── Calculate alignment offset ──
@@ -241,7 +230,7 @@ public class NormalTypesettingEngine : ITypesettingEngine
         for (int i = 0; i < n; i++)
             totalWidth += charAdvances[i];
 
-        float xOffset = Alignment switch
+        float xOffset = entry.Alignment switch
         {
             TextAlignment.Center => -totalWidth * 0.5f,
             TextAlignment.Right => -totalWidth,
@@ -252,62 +241,69 @@ public class NormalTypesettingEngine : ITypesettingEngine
         float cursorX = xOffset;
         for (int i = 0; i < n; i++)
         {
-            char c = line[i];
-
-            if (c != ' ')
+            if (line[i] == ' ')
             {
-                FontFace? rFont = resolvedFonts[i];
-                ushort rIdx = resolvedIndices[i];
+                cursorX += charAdvances[i];
+                continue;
+            }
 
-                if (rFont is not null)
+            FontFace? rFont = resolvedFonts[i];
+            ushort rIdx = resolvedIndices[i];
+            if (rFont is null)
+            {
+                cursorX += charAdvances[i];
+                continue;
+            }
+
+            // Per-character style overrides for rendering (colors, etc.)
+            float charFontSize = entry.FontSize;
+            ushort fillR = entry.FillR, fillG = entry.FillG, fillB = entry.FillB;
+            float fillA = entry.FillA;
+            ushort strokeR = entry.StrokeR, strokeG = entry.StrokeG, strokeB = entry.StrokeB;
+            float strokeA = entry.StrokeA, strokeThickness = entry.StrokeThickness;
+            var charVariationAxes = entry.VariationAxes;
+
+            if (rich is not null)
+            {
+                foreach (var range in rich.GetRangesAt(i))
                 {
-                    // Apply variable font variation axes if supported
-                    if (rFont.IsVariableFont && VariationAxes.Count > 0)
-                        rFont.SetVariationAxes(VariationAxes);
-
-                    Glyph? glyph = rFont.GetVariedGlyph(rIdx);
-                    if (glyph is not null && !glyph.IsEmpty)
-                    {
-                        var element = new GlyphCanvasElement(glyph, rFont.UnitsPerEm)
-                        {
-                            FontSize = FontSize,
-                            RelativeX = cursorX,
-                            RelativeY = baselineY,
-                        };
-
-                        if (FillA > 0f)
-                            element.WithFill(FillR, FillG, FillB, FillA);
-                        if (StrokeThickness > 0f && StrokeA > 0f)
-                            element.WithStroke(StrokeR, StrokeG, StrokeB, StrokeA, StrokeThickness);
-
-                        result.Elements.Add(element);
-                    }
+                    var s = range.Style;
+                    if (s.FontSize.HasValue) charFontSize = s.FontSize.Value;
+                    if (s.FillR.HasValue) fillR = s.FillR.Value;
+                    if (s.FillG.HasValue) fillG = s.FillG.Value;
+                    if (s.FillB.HasValue) fillB = s.FillB.Value;
+                    if (s.FillA.HasValue) fillA = s.FillA.Value;
+                    if (s.StrokeR.HasValue) strokeR = s.StrokeR.Value;
+                    if (s.StrokeG.HasValue) strokeG = s.StrokeG.Value;
+                    if (s.StrokeB.HasValue) strokeB = s.StrokeB.Value;
+                    if (s.StrokeA.HasValue) strokeA = s.StrokeA.Value;
+                    if (s.StrokeThickness.HasValue) strokeThickness = s.StrokeThickness.Value;
+                    if (s.VariationAxes is not null) charVariationAxes = s.VariationAxes;
                 }
+            }
+
+            if (rFont.IsVariableFont && charVariationAxes.Count > 0)
+                rFont.SetVariationAxes(charVariationAxes);
+
+            Glyph? glyph = rFont.GetVariedGlyph(rIdx);
+            if (glyph is not null && !glyph.IsEmpty)
+            {
+                var element = new GlyphCanvasElement(glyph, rFont.UnitsPerEm)
+                {
+                    FontSize = charFontSize,
+                    RelativeX = cursorX,
+                    RelativeY = baselineY,
+                };
+
+                if (fillA > 0f)
+                    element.WithFill(fillR, fillG, fillB, fillA);
+                if (strokeThickness > 0f && strokeA > 0f)
+                    element.WithStroke(strokeR, strokeG, strokeB, strokeA, strokeThickness);
+
+                result.Elements.Add(element);
             }
 
             cursorX += charAdvances[i];
         }
-    }
-
-    public static ITypesettingEngine FromEntry(TextEntry entry)
-    {
-        return new NormalTypesettingEngine
-        {
-            FontSize = entry.FontSize,
-            FillR = entry.FillR,
-            FillG = entry.FillG,
-            FillB = entry.FillB,
-            FillA = entry.FillA,
-            StrokeR = entry.StrokeR,
-            StrokeG = entry.StrokeG,
-            StrokeB = entry.StrokeB,
-            StrokeA = entry.StrokeA,
-            StrokeThickness = entry.StrokeThickness,
-            CharacterSpacing = entry.CharacterSpacing,
-            WordSpacing = entry.WordSpacing,
-            LineSpacing = entry.LineSpacing,
-            Alignment = entry.Alignment,
-            VariationAxes = new Dictionary<string, float>(entry.VariationAxes)
-        };
     }
 }
