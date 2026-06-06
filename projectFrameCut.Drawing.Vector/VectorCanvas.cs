@@ -1,4 +1,4 @@
-﻿using projectFrameCut.Drawing.Base;
+using projectFrameCut.Drawing.Base;
 using System.Numerics;
 
 namespace projectFrameCut.Drawing.Vector
@@ -38,6 +38,24 @@ namespace projectFrameCut.Drawing.Vector
         /// Rotation angle in radians, applied around the element's origin.
         /// </summary>
         public float Rotation { get; set; }
+
+        /// <summary>
+        /// When <c>true</c>, the segment points produced by <see cref="Draw"/> are scaled
+        /// uniformly (using <c>min(canvasWidth, canvasHeight)</c> for both X and Y) so the
+        /// element's intrinsic shape is preserved regardless of the canvas aspect ratio.
+        /// <para>
+        /// The element's position (<see cref="RelativeX"/> / <see cref="RelativeY"/>) is still
+        /// interpreted in 0–1 of the canvas width/height, so the element can be placed anywhere
+        /// on the canvas; only its size is normalized to the shorter canvas dimension.
+        /// </para>
+        /// <para>
+        /// Use this for glyphs and any other element whose natural aspect ratio must not
+        /// be distorted when the canvas is non-square. Default is <c>false</c> (legacy
+        /// behavior: X and Y scale with width/height independently — fine for shapes like
+        /// rectangles and ellipses).
+        /// </para>
+        /// </summary>
+        public bool UseUniformScale { get; set; }
 
         public abstract VectorSegment[] Draw();
     }

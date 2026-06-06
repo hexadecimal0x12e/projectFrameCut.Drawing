@@ -1,7 +1,9 @@
 using projectFrameCut.Drawing.Text.FontHelper.Reader;
+using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Text.FontHelper.Table;
 
+[DebuggerNonUserCode()]
 internal static class HeadTable
 {
     public static HeadData Parse(ReadOnlySpan<byte> data)

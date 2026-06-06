@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace projectFrameCut.Drawing.Text.FontHelper.Reader;
 
+[DebuggerNonUserCode()]
 internal static class BigEndianReader
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

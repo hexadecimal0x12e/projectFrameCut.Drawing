@@ -1,5 +1,8 @@
+using System.Diagnostics;
+
 namespace projectFrameCut.Drawing.Text.FontHelper.Reader;
 
+[DebuggerNonUserCode()]
 internal sealed class SfntReader : IDisposable
 {
     private readonly byte[] _data;

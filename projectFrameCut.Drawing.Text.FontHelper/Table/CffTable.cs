@@ -1,9 +1,12 @@
+using System.Diagnostics;
+
 namespace projectFrameCut.Drawing.Text.FontHelper.Table;
 
 /// <summary>
 /// Parses the 'CFF ' (Compact Font Format) table and provides glyph outline access
 /// for OpenType fonts that use PostScript/CFF outlines instead of TrueType glyf outlines.
 /// </summary>
+[DebuggerNonUserCode()]
 internal sealed class CffTable
 {
     private readonly byte[][] _charStrings;

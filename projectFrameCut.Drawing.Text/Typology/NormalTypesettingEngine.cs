@@ -11,6 +11,18 @@ namespace projectFrameCut.Drawing.Text.Typology;
 /// using a primary <see cref="FontFace"/> and produces a <see cref="VectorPicture"/>
 /// where each visible glyph is a positioned <see cref="GlyphCanvasElement"/>.
 /// </summary>
+/// <remarks>
+/// <para><b>Unit conventions</b> — all coordinates in <see cref="VectorPicture"/>
+/// (and in <see cref="TextEntry.X"/>, <see cref="TextEntry.Y"/>, <see cref="TextEntry.FontSize"/>)
+/// are normalised to the canvas's <c>0..1</c> space, where <c>1.0</c> spans the full
+/// canvas width/height. <see cref="TextEntry.FontSize"/> is therefore a fraction of
+/// the canvas height (a <c>FontSize</c> of <c>0.1</c> means the font's em-square
+/// occupies 10% of the canvas height).</para>
+/// <para><b>Advance computation</b> — the per-character advance is computed in
+/// <see cref="ComputeCharacterAdvance"/> using the same formula in
+/// <see cref="LayoutLine"/> and <see cref="Measure"/>, so measured widths and
+/// rendered cursor positions stay in sync.</para>
+/// </remarks>
 public class NormalTypesettingEngine : ITypesettingEngine
 {
     // ──────────────────────────────────────────────
@@ -120,12 +132,7 @@ public class NormalTypesettingEngine : ITypesettingEngine
                     if (rFont.IsVariableFont && charVariationAxes.Count > 0)
                         rFont.SetVariationAxes(charVariationAxes);
 
-                    float charScale = charFontSize / rFont.UnitsPerEm;
-                    float advance = rFont.GetVariedAdvanceWidth(rIdx) * charScale + charCharSpacing;
-                    // 兜底：同 LayoutLine，防止字体返回 0 把 lineWidth 算成 0
-                    if (advance < charFontSize * 0.1f)
-                        advance = charFontSize;
-                    lineWidth += advance;
+                    lineWidth += ComputeCharacterAdvance(rFont, rIdx, charFontSize, charCharSpacing);
                 }
             }
 
@@ -164,6 +171,75 @@ public class NormalTypesettingEngine : ITypesettingEngine
         }
 
         return (primaryFont, primaryFont.GetGlyphIndex(c));
+    }
+
+    /// <summary>
+    /// Compute the horizontal advance (in normalised canvas space, <c>0..1</c>) for
+    /// a single glyph.  This is the single source of truth for unit conversion
+    /// between the font's design space (hmtx advances in font units,
+    /// <see cref="FontFace.UnitsPerEm"/>) and the canvas's normalised 0..1 space.
+    /// Both <see cref="LayoutLine"/> and <see cref="Measure"/> call this so the
+    /// measured widths and the rendered cursor positions stay in sync.
+    /// </summary>
+    /// <param name="font">Font used to look up the glyph advance. May be a
+    /// fallback font returned by <see cref="ResolveChar"/>.</param>
+    /// <param name="glyphIndex">Index of the glyph in <paramref name="font"/>.</param>
+    /// <param name="charFontSize">Effective font size for this character,
+    /// expressed as a fraction of the canvas height (0..1).</param>
+    /// <param name="charCharSpacing">Extra spacing to add per character
+    /// (already in normalised canvas space).</param>
+    /// <remarks>
+    /// <para>The conversion chain is:</para>
+    /// <code>
+    ///   rawAdvance  = advance(font_units) * (charFontSize / UnitsPerEm) + charCharSpacing
+    /// </code>
+    /// <para>Only a <b>lower bound</b> is applied: if the font reports a zero or
+    /// near-zero advance (&lt; 10% of <paramref name="charFontSize"/>), we fall
+    /// back to <c>charFontSize * 0.5f</c> — half the em height, which is a
+    /// reasonable default advance for a typical proportional character. Using
+    /// the full <c>charFontSize</c> (the entire em height) as a fallback was
+    /// too generous: when <c>charFontSize ≈ 1.0</c> (large font or small
+    /// canvas), each character would advance by the full canvas width,
+    /// pushing all subsequent characters off-canvas and making text appear
+    /// to not render completely.</para>
+    /// <para><b>No upper clamp</b> is applied here on purpose. The earlier
+    /// <c>maxAdvance = charFontSize * 1.5</c> allowed the per-character advance
+    /// to exceed the canvas width (because it scaled with the font size), and
+    /// a hard clamp to <c>1.0</c> was even worse: it forced every glyph to fit
+    /// in one canvas width, so a 2-character string rendered as a single column
+    /// of stacked glyphs.</para>
+    /// <para>Callers should still cap the normalised font size at <c>1.0</c>
+    /// before passing it to this engine, so the per-glyph advance is naturally
+    /// bounded and never runs off the canvas in normal operation.</para>
+    /// </remarks>
+    internal static float ComputeCharacterAdvance(
+        FontFace font, ushort glyphIndex, float charFontSize, float charCharSpacing)
+    {
+        if (font is null)
+            return 0f;
+        if (charFontSize <= 0f || !float.IsFinite(charFontSize))
+            return charCharSpacing;
+
+        ushort upm = font.UnitsPerEm;
+        if (upm == 0)
+            return charCharSpacing;
+
+        // Convert from font design units to normalised canvas space.
+        // 1 em  ≡  charFontSize  (fraction of canvas height)
+        // 1 unit ≡  charFontSize / upm
+        float charScale = charFontSize / upm;
+        float advance = font.GetVariedAdvanceWidth(glyphIndex) * charScale + charCharSpacing;
+
+        // Fallback: when the font reports a zero or near-zero advance (e.g.
+        // broken hmtx table, variation delta that nets out to 0, or .notdef
+        // glyph with no advance), use half the em height as a sane default.
+        // Half-em (~0.5×charFontSize) matches the advance-to-EM ratio of a
+        // typical proportional character and keeps the cursor moving without
+        // blowing each glyph to the full canvas width.
+        if (advance < charFontSize * 0.1f)
+            advance = charFontSize * 0.5f;
+
+        return advance;
     }
 
     private void LayoutLine(
@@ -216,13 +292,7 @@ public class NormalTypesettingEngine : ITypesettingEngine
             if (rFont.IsVariableFont && charVariationAxes.Count > 0)
                 rFont.SetVariationAxes(charVariationAxes);
 
-            float charScale = charFontSize / rFont.UnitsPerEm;
-            float advance = rFont.GetVariedAdvanceWidth(rIdx) * charScale + charCharSpacing;
-            // 兜底：防止字体返回 0（或可变字体的 variation delta 把 advance 算成 0），
-            // 此时光标原地不动会导致所有字形叠在同一点。用 charFontSize 兜一个最小前进量。
-            if (advance < charFontSize * 0.1f)
-                advance = charFontSize;
-            charAdvances[i] = advance;
+            charAdvances[i] = ComputeCharacterAdvance(rFont, rIdx, charFontSize, charCharSpacing);
         }
 
         // ── Calculate alignment offset ──

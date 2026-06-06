@@ -68,6 +68,10 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
             throw new ArgumentException("UnitsPerEm must be greater than zero.", nameof(unitsPerEm));
         _glyph = glyph;
         _unitsPerEm = unitsPerEm;
+        // Glyphs are intrinsically isotropic — the X/Y dimensions of a glyph are coupled
+        // by the font's metrics. If the renderer scaled X and Y with the canvas width/height
+        // independently, non-square selections would horizontally stretch every character.
+        UseUniformScale = true;
     }
 
     // ──────────────────────────────────────────────
@@ -205,6 +209,13 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
     /// Walk a TrueType contour and produce a closed polygon by flattening
     /// quadratic Bézier curves into line segments.
     /// </summary>
+    /// <remarks>
+    /// <see cref="GlyphPoint.Y"/> is already Y-down (canvas convention) —
+    /// the CFF and glyf parsers both negate Y when reading font units. So
+    /// the polygon's Y axis matches the canvas's Y-down coordinate system
+    /// directly. Earlier versions of this method re-negated Y, which flipped
+    /// glyphs upside down on render.
+    /// </remarks>
     private static List<Point> FlattenContour(GlyphPoint[] contour, float scale)
     {
         int n = contour.Length;

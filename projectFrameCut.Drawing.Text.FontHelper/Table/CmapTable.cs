@@ -1,4 +1,5 @@
 using projectFrameCut.Drawing.Text.FontHelper.Reader;
+using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Text.FontHelper.Table;
 
@@ -6,7 +7,7 @@ internal interface ICmapSubtable
 {
     ushort GetGlyphIndex(uint charCode);
 }
-
+[DebuggerNonUserCode()]
 internal static class CmapTable
 {
     public static CmapData Parse(ReadOnlySpan<byte> data)
@@ -162,6 +163,7 @@ internal static class CmapTable
         return new CmapFormat12(data.ToArray(), groupsOffset, (int)numGroups);
     }
 
+    [DebuggerNonUserCode()]
     private sealed class CmapFormat4 : ICmapSubtable
     {
         private readonly byte[] _data;
@@ -220,7 +222,12 @@ internal static class CmapTable
 
         private ushort GetGlyphFromSegment(int segment, uint charCode, ushort startCode)
         {
-            int rangeOff = _idRangeOffsetOffset + segment * 2;
+            // OpenType spec formula:
+            //   glyphIndex = *(idRangeOffset[i] + (c - startCode) + &idRangeOffset[i])
+            // where &idRangeOffset[i] is the byte address OF the idRangeOffset[i] entry
+            // (the start of the field, NOT the address after reading it).
+            int rangeBase = _idRangeOffsetOffset + segment * 2;
+            int rangeOff = rangeBase;
             ushort idRangeOffset = BigEndianReader.ReadUInt16(_data, ref rangeOff);
 
             int deltaOff = _idDeltaOffset + segment * 2;
@@ -229,11 +236,7 @@ internal static class CmapTable
             if (idRangeOffset == 0)
                 return (ushort)((charCode + idDelta) & 0xFFFF);
 
-            // idRangeOffset is measured from the position of idRangeOffset[i] itself
-            // NOTE: rangeOff now points AFTER the two bytes we just read (BigEndianReader advanced it)
-            // So "position of idRangeOffset[i]" = rangeOff (already advanced past the field)
-            // Formula: effectiveOffset = rangeOff + idRangeOffset + 2 * (charCode - startCode)
-            int effectiveOffset = rangeOff + idRangeOffset + 2 * (int)(charCode - startCode);
+            int effectiveOffset = rangeBase + idRangeOffset + 2 * (int)(charCode - startCode);
 
             if ((uint)(effectiveOffset + 1) >= (uint)_data.Length)
                 return 0;
@@ -246,7 +249,8 @@ internal static class CmapTable
             return (ushort)((glyphIndex + idDelta) & 0xFFFF);
         }
     }
-
+    
+    [DebuggerNonUserCode()]
     private sealed class CmapFormat12 : ICmapSubtable
     {
         private readonly byte[] _data;

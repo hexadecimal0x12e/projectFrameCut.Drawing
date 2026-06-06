@@ -1,7 +1,9 @@
 using projectFrameCut.Drawing.Text.FontHelper.Reader;
+using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Text.FontHelper.Table;
 
+[DebuggerNonUserCode()]
 internal static class FvarTable
 {
     public static FvarData Parse(ReadOnlySpan<byte> data)

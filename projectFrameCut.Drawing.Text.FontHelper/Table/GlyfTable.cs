@@ -1,4 +1,5 @@
 using projectFrameCut.Drawing.Text.FontHelper.Reader;
+using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Text.FontHelper.Table;
 
@@ -6,6 +7,7 @@ namespace projectFrameCut.Drawing.Text.FontHelper.Table;
 /// Represents a single contour point within a glyph.
 /// Coordinates are in image space (Y-down, flipped from TTF's Y-up).
 /// </summary>
+[DebuggerNonUserCode()]
 public readonly struct GlyphPoint
 {
     public short X { get; }
@@ -23,6 +25,7 @@ public readonly struct GlyphPoint
 /// <summary>
 /// Represents a parsed glyph with its contours, bounding box, and metrics.
 /// </summary>
+
 public sealed class Glyph
 {
     /// <summary>0 = Simple outline, 1 = Compound, -1 = Empty (no contours).</summary>
@@ -51,7 +54,7 @@ public sealed class Glyph
 
     internal static readonly Glyph Empty = new(-1, [], 0, 0, 0, 0);
 }
-
+[DebuggerNonUserCode()]
 internal static class GlyfTable
 {
     /// <summary>

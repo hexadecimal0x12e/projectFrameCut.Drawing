@@ -1,5 +1,7 @@
 using projectFrameCut.Drawing.Text.Entry;
 using projectFrameCut.Drawing.Text.FontHelper;
+using projectFrameCut.Drawing.Text.Typology;
+using System.Diagnostics;
 using System.Text;
 
 namespace projectFrameCut.Drawing.Text.Typology
@@ -109,15 +111,14 @@ namespace projectFrameCut.Drawing.Text.Typology
                         if (font.IsVariableFont && charVariationAxes.Count > 0)
                             font.SetVariationAxes(charVariationAxes);
 
-                        float charScale = charFontSize / font.UnitsPerEm;
+                        // Reuse the same advance formula as the rendering engine
+                        // (NormalTypesettingEngine.ComputeCharacterAdvance) so line
+                        // breaking decisions match the cursor positions used at render
+                        // time — otherwise a wrap point chosen here can disagree with
+                        // the rendered layout.
                         ushort glyphIndex = font.GetGlyphIndex(c);
-                        float advance = font.GetVariedAdvanceWidth(glyphIndex) * charScale + charCharSpacing;
-
-                        // 兜底：防止零宽字符导致换行计算错误
-                        if (advance < charFontSize * 0.1f)
-                            advance = charFontSize;
-
-                        widths[i] = advance;
+                        widths[i] = NormalTypesettingEngine.ComputeCharacterAdvance(
+                            font, glyphIndex, charFontSize, charCharSpacing);
                     }
                 }
 

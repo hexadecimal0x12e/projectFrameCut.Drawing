@@ -14,7 +14,15 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         private readonly int _height;
         private readonly int _pixels;
 
-        private VectorToIPicture(int width, int height)
+        // Per-element X/Y scales used to map normalized segment coordinates to pixels.
+        // Defaults are the canvas dimensions; elements with UseUniformScale set override
+        // these to min(width, height) so glyph aspect ratio is preserved on non-square
+        // canvases. The picture's actual pixel size (_width/_height) is unchanged and
+        // still drives clamping and pixel indexing.
+        private float _scaleX;
+        private float _scaleY;
+
+        private VectorToIPicture(int width, int height, bool transparentBackground = false)
         {
             _width = width;
             _height = height;
@@ -23,26 +31,44 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             _g = new ushort[_pixels];
             _b = new ushort[_pixels];
             _a = new float[_pixels];
-            Array.Fill(_a, 1f);
+            _scaleX = width;
+            _scaleY = height;
+            if (transparentBackground)
+            {
+                Array.Fill(_a, 0f);
+            }
+            else
+            {
+                Array.Fill(_a, 1f);
+            }
         }
 
-        public static IPicture Convert(VectorPicture canvas, int width, int height)
+        public static IPicture Convert(VectorPicture canvas, int width, int height, bool transparentBackground = false)
         {
             if (width <= 0 || height <= 0)
                 throw new ArgumentOutOfRangeException($"Canvas size must be positive. Got {width}x{height}.");
 
-            var converter = new VectorToIPicture(width, height);
+            var converter = new VectorToIPicture(width, height, transparentBackground);
 
-            // White background
-            Array.Fill(converter._r, ushort.MaxValue);
-            Array.Fill(converter._g, ushort.MaxValue);
-            Array.Fill(converter._b, ushort.MaxValue);
+            if (!transparentBackground)
+            {
+                // White background
+                Array.Fill(converter._r, ushort.MaxValue);
+                Array.Fill(converter._g, ushort.MaxValue);
+                Array.Fill(converter._b, ushort.MaxValue);
+            }
 
             // Sort elements by layer index (lowest first, drawn first = bottom)
             foreach (var element in canvas.Elements.OrderBy(e => e.LayerIndex))
             {
                 var ox = element.RelativeX * width;
                 var oy = element.RelativeY * height;
+                // Pick the per-element scale used to map segment coordinates to pixels.
+                // UseUniformScale preserves the element's natural aspect ratio (essential
+                // for glyphs so they don't stretch on wide/tall selections); otherwise fall
+                // back to the legacy behaviour of X→width, Y→height.
+                converter._scaleX = element.UseUniformScale ? Math.Min(width, height) : width;
+                converter._scaleY = element.UseUniformScale ? Math.Min(width, height) : height;
                 var segments = element.Draw();
 
                 if (element.Rotation != 0f)
@@ -121,8 +147,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         private int ToPixel(float fraction) => (int)(fraction + 0.5f);
         private float ToCanvas(int pixel) => pixel / (float)_width;
 
-        private float CX(float segX, float ox) => ox + segX * _width;
-        private float CY(float segY, float oy) => oy + segY * _height;
+        private float CX(float segX, float ox) => ox + segX * _scaleX;
+        private float CY(float segY, float oy) => oy + segY * _scaleY;
 
         private void BlendPixel(int x, int y, ushort r, ushort g, ushort b, float alpha)
         {
@@ -316,7 +342,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     var idx = row + px;
                     if (alpha >= 1f)
                     {
-                        _r[idx] = r; _g[idx] = g; _b[idx] = b;
+                        _r[idx] = r; _g[idx] = g; _b[idx] = b; _a[idx] = 1f;
                     }
                     else
                     {
@@ -353,9 +379,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         {
             var rx = CX(s.X, ox);
             var ry = CY(s.Y, oy);
-            var rw = s.Width * _width;
-            var rh = s.Height * _height;
-            var radius = s.CornerRadius * MathF.Min(_width, _height);
+            var rw = s.Width * _scaleX;
+            var rh = s.Height * _scaleY;
+            var radius = s.CornerRadius * MathF.Min(_scaleX, _scaleY);
 
             radius = MathF.Min(radius, MathF.Min(rw, rh) * 0.5f);
 
@@ -417,7 +443,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                         var idx = py * _width + px;
                         if (alpha >= 1f)
                         {
-                            _r[idx] = r; _g[idx] = g; _b[idx] = b;
+                            _r[idx] = r; _g[idx] = g; _b[idx] = b; _a[idx] = 1f;
                         }
                         else
                         {
@@ -478,8 +504,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         {
             var cx = CX(s.X, ox);
             var cy = CY(s.Y, oy);
-            var rx = s.RadiusX * _width;
-            var ry = s.RadiusY * _height;
+            var rx = s.RadiusX * _scaleX;
+            var ry = s.RadiusY * _scaleY;
 
             if (rx <= 0f || ry <= 0f) return;
 
@@ -520,7 +546,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     var idx = py * _width + px;
                     if (alpha >= 1f)
                     {
-                        _r[idx] = r; _g[idx] = g; _b[idx] = b;
+                        _r[idx] = r; _g[idx] = g; _b[idx] = b; _a[idx] = 1f;
                     }
                     else
                     {
@@ -553,8 +579,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
             var cx = CX(s.X, ox);
             var cy = CY(s.Y, oy);
-            var rx = s.RadiusX * _width;
-            var ry = s.RadiusY * _height;
+            var rx = s.RadiusX * _scaleX;
+            var ry = s.RadiusY * _scaleY;
 
             if (rx <= 0f || ry <= 0f) return;
 
@@ -831,7 +857,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                         var idx = py * _width + px;
                         if (alpha >= 1f)
                         {
-                            _r[idx] = r; _g[idx] = g; _b[idx] = b;
+                            _r[idx] = r; _g[idx] = g; _b[idx] = b; _a[idx] = 1f;
                         }
                         else
                         {
@@ -927,7 +953,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                         int idx = py * _width + px;
                         if (alpha >= 1f)
                         {
-                            _r[idx] = r; _g[idx] = g; _b[idx] = b;
+                            _r[idx] = r; _g[idx] = g; _b[idx] = b; _a[idx] = 1f;
                         }
                         else
                         {

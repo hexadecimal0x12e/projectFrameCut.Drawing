@@ -4,6 +4,7 @@ using projectFrameCut.Drawing.Vector.ImportExport;
 namespace projectFrameCut.Drawing.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public sealed class SvgConversionTests
 {
     [TestMethod]

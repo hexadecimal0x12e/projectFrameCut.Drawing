@@ -5,10 +5,19 @@ namespace projectFrameCut.Drawing.Text.Entry
     public record TextEntry
     {
         public required string Text { get; set; }
-        
+
         public required string FontName { get; set; }
         public string FontStyle { get; set; } = "Regular";
         public string[] FallbackFonts { get; set; } = [];
+        /// <summary>
+        /// Font size expressed as a fraction of the canvas height (the canvas is
+        /// normalised 0..1 in both X and Y). A <c>FontSize</c> of <c>0.1</c>
+        /// means the font's em-square occupies 10% of the canvas height.
+        /// The render engine (<see cref="Typology.NormalTypesettingEngine"/>)
+        /// converts this to a per-font-unit scale via <c>FontSize / UnitsPerEm</c>,
+        /// so a glyph with <c>GetAdvanceWidth = UnitsPerEm</c> ends up with an
+        /// advance of exactly <c>FontSize</c> in normalised space.
+        /// </summary>
         public float FontSize { get; set; } = 0.1f;
         
         public float X { get; set; }

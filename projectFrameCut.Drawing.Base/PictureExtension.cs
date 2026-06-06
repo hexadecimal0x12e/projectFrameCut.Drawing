@@ -265,6 +265,22 @@ namespace projectFrameCut.Drawing.Base
             }
 
             /// <summary>
+            /// Save the picture to a file path in png format. This is a convenient method that uses a shared instance of <see cref="PngPictureEncoder"/> to save the picture as a PNG file. The encoder will handle the specific picture type and format, and the file will be created or overwritten at the specified path.
+            /// </summary>
+            [DebuggerStepThrough()]
+            [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+            public void SaveToPng(string path)
+                => SaveToDisk(source, path, SharedPngPictureEncoder);
+
+            /// <summary>
+            /// Save the picture to a file path in png format. This is a convenient method that uses a shared instance of <see cref="PngPictureEncoder"/> to save the picture as a PNG file. The encoder will handle the specific picture type and format, and the file will be created or overwritten at the specified path.
+            /// </summary>
+            [DebuggerStepThrough()]
+            [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+            public void SaveToPng(Stream output)
+                => Save(source, output, SharedPngPictureEncoder);
+
+            /// <summary>
             /// Get the dimensions of the picture as a tuple of (width, height). This is a convenient method to retrieve both dimensions together without needing to access the properties separately.
             /// </summary>
             [DebuggerStepThrough()]

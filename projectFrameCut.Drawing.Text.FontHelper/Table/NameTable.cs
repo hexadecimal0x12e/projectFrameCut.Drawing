@@ -1,8 +1,10 @@
 using projectFrameCut.Drawing.Text.FontHelper.Reader;
+using System.Diagnostics;
 using System.Text;
 
 namespace projectFrameCut.Drawing.Text.FontHelper.Table;
 
+[DebuggerNonUserCode()]
 internal static class NameTable
 {
     public static NameData Parse(ReadOnlySpan<byte> data)
