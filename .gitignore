@@ -367,3 +367,4 @@ FodyWeavers.xsd
 /.stignore
 /.stversions
 /projectFrameCut.Drawing.Test.App/result-*.png
+/projectFrameCut.Drawing.Benchmarks/BenchmarkResults/results
