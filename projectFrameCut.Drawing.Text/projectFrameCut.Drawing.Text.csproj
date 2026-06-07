@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+		<PackageId>projectFrameCut.Drawing.Text</PackageId>
+		<Description>projectFrameCut Drawing library - Text processing and rendering</Description>
   </PropertyGroup>
 
   <ItemGroup>

@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+		<PackageId>projectFrameCut.Drawing.Effect</PackageId>
+		<Description>projectFrameCut Drawing library - advanced image effects</Description>
   </PropertyGroup>
 
   <ItemGroup>

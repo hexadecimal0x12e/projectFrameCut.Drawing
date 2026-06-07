@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+		<PackageId>projectFrameCut.Drawing.Vector</PackageId>
+		<Description>projectFrameCut Drawing library - Vector image processing</Description>
   </PropertyGroup>
 
   <ItemGroup>

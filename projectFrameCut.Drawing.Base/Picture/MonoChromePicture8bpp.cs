@@ -110,7 +110,8 @@ namespace projectFrameCut.Drawing.Base.Picture
         {
             if (string.IsNullOrWhiteSpace(imagePath)) throw new ArgumentException("imagePath is null or empty", nameof(imagePath));
             PictureFileLoader.LoadInto(this, imagePath);
-            PictureLifecycleTracker.RegisterCreated(this);
+            PictureLifecycleTracker.RegisterCreated(this); 
+            ProcessStack ??= new();
         }
 
         public MonoChromePicture8bpp SetAlpha(bool haveAlpha)

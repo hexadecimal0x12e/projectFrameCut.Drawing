@@ -1,53 +1,24 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
-		<ImplicitUsings>enable</ImplicitUsings>
-		<Nullable>enable</Nullable>
-
 		<PackageId>projectFrameCut.Drawing</PackageId>
-		<AssemblyVersion>1.0.0.0</AssemblyVersion>
-		<FileVersion>1.0.0.0</FileVersion>
-		<Authors>hexadecimal0x12e</Authors>
-		<Product>projectFrameCut Drawing library</Product>
-		<Description>the true core of projectFrameCut</Description>
-		<AssemblyTitle>projectFrameCut Drawing library</AssemblyTitle>
-		<AssemblyDescription>projectFrameCut Drawing library</AssemblyDescription>
-		<Copyright>Copyright (c) hexadecimal0x12e 2026</Copyright>
-		<PackageProjectUrl>https://github.com/hexadecimal0x12e/projectFrameCut.Drawing</PackageProjectUrl>
-		<Title>projectFrameCut Drawing library</Title>
-		<RepositoryUrl>https://github.com/hexadecimal0x12e/projectFrameCut.Drawing</RepositoryUrl>
-		<PackageReadmeFile>readme.md</PackageReadmeFile>
-		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
-		<IncludeSymbols>True</IncludeSymbols>
-		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
-		<GenerateDocumentationFile>True</GenerateDocumentationFile>
-		<IsTrimmable>True</IsTrimmable>
-		<IsAotCompatible>True</IsAotCompatible>
-		<PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
+		<Product>the true core of projectFrameCut</Product>
 	</PropertyGroup>
-
-	<ItemGroup>
-	  <None Include="..\license.txt">
-	    <Pack>True</Pack>
-	    <PackagePath>\</PackagePath>
-	  </None>
-	  <None Include="..\readme.md">
-	    <Pack>True</Pack>
-	    <PackagePath>\</PackagePath>
-	  </None>
-	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.45">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 		</PackageReference>
-		<ProjectReference Include="..\projectFrameCut.Drawing.Base\projectFrameCut.Drawing.Base.csproj" />
-		<ProjectReference Include="..\projectFrameCut.Drawing.Effect\projectFrameCut.Drawing.Effect.csproj" />
-		<ProjectReference Include="..\projectFrameCut.Drawing.Processing\projectFrameCut.Drawing.Processing.csproj" />
-		<ProjectReference Include="..\projectFrameCut.Drawing.Text\projectFrameCut.Drawing.Text.csproj" />
-		<ProjectReference Include="..\projectFrameCut.Drawing.Vector\projectFrameCut.Drawing.Vector.csproj" />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Base\projectFrameCut.Drawing.Base.csproj" PrivateAssets="all" />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Effect\projectFrameCut.Drawing.Effect.csproj" PrivateAssets="all" />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Processing\projectFrameCut.Drawing.Processing.csproj" PrivateAssets="all" />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Text\projectFrameCut.Drawing.Text.csproj" PrivateAssets="all" />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Vector\projectFrameCut.Drawing.Vector.csproj" PrivateAssets="all" />
+
+		<PackageReference Include="System.IO.Hashing" Version="10.0.8" /> <!-- for the Base project, make sure it's included in dependencies -->
+			
 	</ItemGroup>
 
 </Project>

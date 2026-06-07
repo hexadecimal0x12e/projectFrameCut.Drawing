@@ -4,10 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+		<PackageId>projectFrameCut.Drawing.Base</PackageId>
+		<Description>projectFrameCut Drawing library - Base structure</Description>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.IO.Hashing" Version="10.0.*" />
+    <PackageReference Include="System.IO.Hashing" Version="10.0.8" />
   </ItemGroup>
 
 </Project>

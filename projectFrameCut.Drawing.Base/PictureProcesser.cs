@@ -257,7 +257,7 @@ namespace projectFrameCut.Drawing.Base
         public TimeSpan? Elapsed { get; set; }
         public string? Tag { get; set; }
 
-        private static JsonSerializerOptions options = new JsonSerializerOptions
+        private static readonly JsonSerializerOptions options = new JsonSerializerOptions
         {
             WriteIndented = true,
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
@@ -375,10 +375,10 @@ namespace projectFrameCut.Drawing.Base
             for (int i = 0; i < take; i++)
             {
                 var frame = frames[i];
-                var method = frame.GetMethod();
+                var method = DiagnosticMethodInfo.Create(frame);
                 string methodName = method == null
                     ? "(unknown)"
-                    : $"{method.DeclaringType?.FullName}.{method.Name}";
+                    : $"{method.DeclaringTypeName}.{method.Name}";
 
                 string? file = frame.GetFileName();
                 int line = frame.GetFileLineNumber();
@@ -468,17 +468,17 @@ namespace projectFrameCut.Drawing.Base
             for (int i = 0; i < take; i++)
             {
                 var frame = frames[i];
-                var method = frame.GetMethod();
+                var method = DiagnosticMethodInfo.Create(frame);
                 string methodName = method == null
                     ? "(unknown)"
-                    : $"{method.DeclaringType?.FullName}.{method.Name}";
+                    : $"{method.DeclaringTypeName}.{method.Name}";
 
                 string? file = frame.GetFileName();
                 int line = frame.GetFileLineNumber();
                 if (!string.IsNullOrWhiteSpace(file) && line > 0)
                 {
                     sb.Append(indent).Append("    ").Append(i + 1).Append(". ").Append(methodName)
-                        .Append(" (").Append(System.IO.Path.GetFileName(file)).Append(':').Append(line).Append(")")
+                        .Append(" (").Append(System.IO.Path.GetFileName(file)).Append(':').Append(line).Append(')')
                         .AppendLine();
                 }
                 else
@@ -493,6 +493,8 @@ namespace projectFrameCut.Drawing.Base
             }
         }
 
+        [SuppressMessage("Trimming", "IL3050", Justification = "Already checked whether reflection is available")]
+        [SuppressMessage("Trimming", "IL2026", Justification = "Already checked whether reflection is available")]
         private static string FormatPropertyValueForLog(object? value)
         {
             if (value == null) return "(null)";
@@ -510,7 +512,7 @@ namespace projectFrameCut.Drawing.Base
             try
             {
                 // Best-effort JSON for anonymous/complex objects.
-                if (value is not ValueType)
+                if (value is not ValueType && JsonSerializer.IsReflectionEnabledByDefault)
                 {
                     return JsonSerializer.Serialize(value, options);
                 }
@@ -525,10 +527,11 @@ namespace projectFrameCut.Drawing.Base
 
         private class TypeJsonConverter : JsonConverter<Type?>
         {
+            [SuppressMessage("Trimming", "IL2057", Justification = "Already checked whether reflection is available")]
             public override Type? Read(ref Utf8JsonReader reader, Type? typeToConvert, JsonSerializerOptions options)
             {
                 string? typeName = reader.GetString();
-                if (typeName == null) return null;
+                if (typeName == null || !JsonSerializer.IsReflectionEnabledByDefault) return null;
                 return Type.GetType(typeName);
             }
             public override void Write(Utf8JsonWriter writer, Type? value, JsonSerializerOptions options)

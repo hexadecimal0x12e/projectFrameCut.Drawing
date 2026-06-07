@@ -1,0 +1,34 @@
+<Project>
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Package/publishing metadata -->
+    <Authors>hexadecimal0x12e</Authors>
+    <Copyright>Copyright (c) hexadecimal0x12e 2026</Copyright>
+		<Description>$(Product)</Description>
+		<PackageProjectUrl>https://github.com/hexadecimal0x12e/projectFrameCut.Drawing</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/hexadecimal0x12e/projectFrameCut.Drawing</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+    <PackageReadmeFile>readme.md</PackageReadmeFile>
+
+    <!-- Versioning -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+
+    <!-- Build options -->
+    <IncludeSymbols>True</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <IsTrimmable>True</IsTrimmable>
+    <IsAotCompatible>True</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)license.txt" Pack="True" PackagePath="" />
+    <None Include="$(MSBuildThisFileDirectory)readme.md" Pack="True" PackagePath="" />
+  </ItemGroup>
+
+</Project>
