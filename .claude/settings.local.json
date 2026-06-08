@@ -1,21 +1,22 @@
 {
   "permissions": {
     "allow": [
-        "Bash(dotnet build *)",
-        "Bash(splc-edit *)",
-        "Bash(dotnet tool *)",
-        "Bash(dotnet test *)",
-        "Bash(xxd)",
-        "Bash(findstr Value)",
-        "Bash(dotnet restore *)",
-        "Bash(cd *)",
-        "PowerShell(cd *)",
-        "PowerShell(dotnet build *)",
-        "PowerShell(Get-Content *)",
-        "PowerShell(Select-Object *)",
-        "PowerShell(Select-String -Pattern \"error|Error|错误\")",
-        "Bash(dir *)",
-        "WebFetch(domain:www.nuget.org)"
+      "Bash(dotnet build *)",
+      "Bash(splc-edit *)",
+      "Bash(dotnet tool *)",
+      "Bash(dotnet test *)",
+      "Bash(xxd)",
+      "Bash(findstr Value)",
+      "Bash(dotnet restore *)",
+      "Bash(cd *)",
+      "PowerShell(cd *)",
+      "PowerShell(dotnet build *)",
+      "PowerShell(Get-Content *)",
+      "PowerShell(Select-Object *)",
+      "PowerShell(Select-String -Pattern \"error|Error|错误\")",
+      "Bash(dir *)",
+      "WebFetch(domain:www.nuget.org)",
+      "PowerShell(Stop-Process *)"
     ],
     "deny": [
       "Bash(Select-*)",

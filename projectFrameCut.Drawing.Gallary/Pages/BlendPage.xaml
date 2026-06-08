@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="projectFrameCut.Drawing.Gallary.Pages.BlendPage"
+             Title="Blend Modes">
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="16" Padding="16">
+
+            <Label Text="Blend Modes" FontSize="24" FontAttributes="Bold" />
+            <Label Text="Overlay · Add · Multiply · Screen · 共 9 种混合模式"
+                   FontSize="14" TextColor="Gray" Margin="0,0,0,8" />
+
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="混合模式对比" FontSize="18" FontAttributes="Bold" />
+                    <Label Text="使用 CPUBlendPictureComposer 将白色半透明圆形叠加到测试图上"
+                           FontSize="12" TextColor="Gray" />
+                    <ActivityIndicator x:Name="Spinner" IsRunning="True"
+                                       HorizontalOptions="Center" HeightRequest="40" />
+                    <Image x:Name="DemoImage" IsVisible="False"
+                           HorizontalOptions="Center" HeightRequest="180" />
+                    <Label Text="Composing 命名空间提供 IPictureComposer 接口和 9 种 BlendMode。支持 8bpp、16bpp 和 HDR。"
+                           FontSize="12" TextColor="Gray" />
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

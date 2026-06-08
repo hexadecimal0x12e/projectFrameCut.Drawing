@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="projectFrameCut.Drawing.Gallary.MainPage"
+             Title="Drawing Gallery">
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="16" Padding="16">
+
+            <!-- Title -->
+            <Label Text="Drawing Gallery"
+                   FontSize="28" FontAttributes="Bold"
+                   HorizontalOptions="Center" />
+            <Label Text="projectFrameCut.Drawing 功能展示 · 点击卡片进入"
+                   FontSize="14" HorizontalOptions="Center"
+                   TextColor="Gray" Margin="0,0,0,12" />
+
+            <!-- Effects -->
+            <Border StrokeShape="RoundRectangle 12" Padding="16"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnEffectsTapped" />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Image Effects" FontSize="20" FontAttributes="Bold" />
+                    <Label Text="Invert · Grayscale · Blur · Vignette · Flip · 共 17 种像素级效果"
+                           FontSize="13" TextColor="Gray" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Blend -->
+            <Border StrokeShape="RoundRectangle 12" Padding="16"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnBlendTapped" />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Blend Modes" FontSize="20" FontAttributes="Bold" />
+                    <Label Text="Overlay · Add · Multiply · Screen · 共 9 种混合模式"
+                           FontSize="13" TextColor="Gray" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Vector -->
+            <Border StrokeShape="RoundRectangle 12" Padding="16"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnVectorTapped" />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Vector Graphics" FontSize="20" FontAttributes="Bold" />
+                    <Label Text="ShapeCanvasElement Fluent API · 多种线段类型 · SVG 导入导出"
+                           FontSize="13" TextColor="Gray" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Text -->
+            <Border StrokeShape="RoundRectangle 12" Padding="16"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnTextTapped" />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Text Rendering" FontSize="20" FontAttributes="Bold" />
+                    <Label Text="NormalTypesettingEngine · RichTextEntry · 变宽字体 · 垂直排版"
+                           FontSize="13" TextColor="Gray" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Source Pattern (inline preview) -->
+            <Border StrokeShape="RoundRectangle 12" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Test Pattern" FontSize="16" FontAttributes="Bold" />
+                    <Image x:Name="SourceImage" HeightRequest="80"
+                           HorizontalOptions="Center" />
+                    <Label Text="程序生成的彩色渐变图，作为效果和混合演示的基础图片。"
+                           FontSize="12" TextColor="Gray" />
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

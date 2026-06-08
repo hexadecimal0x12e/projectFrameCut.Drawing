@@ -21,8 +21,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // still drives clamping and pixel indexing.
         private float _scaleX;
         private float _scaleY;
+        private readonly AntiAliasMode _aaMode;
 
-        private VectorToIPicture(int width, int height, bool transparentBackground = false)
+        private VectorToIPicture(int width, int height, bool transparentBackground = false, AntiAliasMode aaMode = AntiAliasMode.None)
         {
             _width = width;
             _height = height;
@@ -33,6 +34,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             _a = new float[_pixels];
             _scaleX = width;
             _scaleY = height;
+            _aaMode = aaMode;
             if (transparentBackground)
             {
                 Array.Fill(_a, 0f);
@@ -43,12 +45,23 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             }
         }
 
-        public static IPicture Convert(VectorPicture canvas, int width, int height, bool transparentBackground = false)
+        public static IPicture Convert(VectorPicture canvas, int width, int height,
+            bool transparentBackground = false, AntiAliasMode aaMode = AntiAliasMode.None)
         {
             if (width <= 0 || height <= 0)
                 throw new ArgumentOutOfRangeException($"Canvas size must be positive. Got {width}x{height}.");
 
-            var converter = new VectorToIPicture(width, height, transparentBackground);
+            int scaleFactor = aaMode switch
+            {
+                AntiAliasMode.SSAA2x => 2,
+                AntiAliasMode.SSAA4x => 4,
+                _ => 1,
+            };
+
+            int renderWidth = width * scaleFactor;
+            int renderHeight = height * scaleFactor;
+
+            var converter = new VectorToIPicture(renderWidth, renderHeight, transparentBackground, aaMode);
 
             if (!transparentBackground)
             {
@@ -61,29 +74,33 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             // Sort elements by layer index (lowest first, drawn first = bottom)
             foreach (var element in canvas.Elements.OrderBy(e => e.LayerIndex))
             {
-                var ox = element.RelativeX * width;
-                var oy = element.RelativeY * height;
-                // Pick the per-element scale used to map segment coordinates to pixels.
-                // UseUniformScale preserves the element's natural aspect ratio (essential
-                // for glyphs so they don't stretch on wide/tall selections); otherwise fall
-                // back to the legacy behaviour of X→width, Y→height.
-                converter._scaleX = element.UseUniformScale ? Math.Min(width, height) : width;
-                converter._scaleY = element.UseUniformScale ? Math.Min(width, height) : height;
-                var segments = element.Draw();
-
-                if (element.Rotation != 0f)
+                // UseUniformScale elements (glyphs, debug boxes): BaseX/Y holds the
+                // canvas-space text-block origin; RelativeX/Y holds the uniform-space
+                // cursor advance.  Map each through its own scale so that glyph outlines
+                // and character advances stay in sync on non-square canvases.
+                if (element.UseUniformScale)
                 {
-                    float cosA = MathF.Cos(element.Rotation);
-                    float sinA = MathF.Sin(element.Rotation);
-                    foreach (var segment in segments)
-                        converter.RenderSegment(RotateSegment(segment, cosA, sinA), ox, oy);
+                    float us = Math.Min(renderWidth, renderHeight);
+                    converter._scaleX = us;
+                    converter._scaleY = us;
+                    var ox = element.BaseX * renderWidth + element.RelativeX * us;
+                    var oy = element.BaseY * renderHeight + element.RelativeY * us;
+                    var segments = element.Draw();
+                    RenderSegments(converter, segments, ox, oy, element.Rotation);
                 }
                 else
                 {
-                    foreach (var segment in segments)
-                        converter.RenderSegment(segment, ox, oy);
+                    converter._scaleX = renderWidth;
+                    converter._scaleY = renderHeight;
+                    var ox = element.RelativeX * renderWidth;
+                    var oy = element.RelativeY * renderHeight;
+                    var segments = element.Draw();
+                    RenderSegments(converter, segments, ox, oy, element.Rotation);
                 }
             }
+
+            if (scaleFactor > 1)
+                return DownsampleToOutput(converter, width, height, scaleFactor, renderWidth);
 
             var needsAlpha = false;
             for (int i = 0; i < converter._pixels; i++)
@@ -105,6 +122,24 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // ---------------------------------------------------------------
         // Render dispatch
         // ---------------------------------------------------------------
+
+        private static void RenderSegments(
+            VectorToIPicture converter, VectorSegment[] segments,
+            float ox, float oy, float rotation)
+        {
+            if (rotation != 0f)
+            {
+                float cosA = MathF.Cos(rotation);
+                float sinA = MathF.Sin(rotation);
+                foreach (var segment in segments)
+                    converter.RenderSegment(RotateSegment(segment, cosA, sinA), ox, oy);
+            }
+            else
+            {
+                foreach (var segment in segments)
+                    converter.RenderSegment(segment, ox, oy);
+            }
+        }
 
         private void RenderSegment(VectorSegment seg, float ox, float oy)
         {
@@ -316,8 +351,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         {
             var rx = CX(s.X, ox);
             var ry = CY(s.Y, oy);
-            var rw = s.Width * _width;
-            var rh = s.Height * _height;
+            var rw = s.Width * _scaleX;
+            var rh = s.Height * _scaleY;
 
             if (s.FillA > 0f)
                 FillRect(rx, ry, rw, rh, s.FillR, s.FillG, s.FillB, s.FillA);
@@ -703,7 +738,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             var pts = s.Points;
             if (pts.Length < 3) return;
 
-            Span<(float x, float y)> canvasPts = stackalloc (float, float)[pts.Length];
+            Span<(float x, float y)> canvasPts = pts.Length <= 256
+                ? stackalloc (float, float)[pts.Length]
+                : new (float, float)[pts.Length];
             for (var i = 0; i < pts.Length; i++)
                 canvasPts[i] = (CX(pts[i].X, ox), CY(pts[i].Y, oy));
 
@@ -908,7 +945,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             AddEdges(outerPts);
             foreach (var hole in holes)
             {
-                Span<(float x, float y)> holePts = stackalloc (float, float)[hole.Length];
+                Span<(float x, float y)> holePts = hole.Length <= 256
+                    ? stackalloc (float, float)[hole.Length]
+                    : new (float, float)[hole.Length];
                 for (int i = 0; i < hole.Length; i++)
                     holePts[i] = (CX(hole[i].X, ox), CY(hole[i].Y, oy));
                 AddEdges(holePts);
@@ -1103,6 +1142,69 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 FillR = props.FillR, FillG = props.FillG, FillB = props.FillB, FillA = props.FillA,
                 Thickness = props.Thickness,
                 StrokeR = props.StrokeR, StrokeG = props.StrokeG, StrokeB = props.StrokeB, StrokeA = props.StrokeA,
+            };
+        }
+
+        // ---------------------------------------------------------------
+        //  SSAA 下采样
+        // ---------------------------------------------------------------
+
+        private static IPicture DownsampleToOutput(
+            VectorToIPicture converter,
+            int outWidth, int outHeight, int scaleFactor, int renderWidth)
+        {
+            int pixels = outWidth * outHeight;
+            int blockSize = scaleFactor * scaleFactor;
+
+            var outR = new ushort[pixels];
+            var outG = new ushort[pixels];
+            var outB = new ushort[pixels];
+            var outA = new float[pixels];
+
+            for (int y = 0; y < outHeight; y++)
+            {
+                int inBaseY = y * scaleFactor;
+                for (int x = 0; x < outWidth; x++)
+                {
+                    int inBaseX = x * scaleFactor;
+                    long sumR = 0, sumG = 0, sumB = 0;
+                    long sumA = 0;
+
+                    for (int sy = 0; sy < scaleFactor; sy++)
+                    {
+                        int row = (inBaseY + sy) * renderWidth + inBaseX;
+                        for (int sx = 0; sx < scaleFactor; sx++)
+                        {
+                            int idx = row + sx;
+                            sumR += converter._r[idx];
+                            sumG += converter._g[idx];
+                            sumB += converter._b[idx];
+                            sumA += (long)(converter._a[idx] * ushort.MaxValue);
+                        }
+                    }
+
+                    int oi = y * outWidth + x;
+                    outR[oi] = (ushort)(sumR / blockSize);
+                    outG[oi] = (ushort)(sumG / blockSize);
+                    outB[oi] = (ushort)(sumB / blockSize);
+                    outA[oi] = (float)sumA / (blockSize * ushort.MaxValue);
+                }
+            }
+
+            var needsAlpha = false;
+            for (int i = 0; i < pixels; i++)
+            {
+                if (outA[i] < 1f)
+                { needsAlpha = true; break; }
+            }
+
+            return new Picture16bpp(outWidth, outHeight)
+            {
+                r = outR,
+                g = outG,
+                b = outB,
+                a = needsAlpha ? outA : null,
+                HasAlphaChannel = needsAlpha,
             };
         }
     }

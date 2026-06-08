@@ -186,6 +186,76 @@ namespace projectFrameCut.Drawing.Test.App
                         return;
                     }
 
+                case "dumpAdvances":
+                    {
+                        Console.Write("Input font file path: ");
+                        var path = Console.ReadLine();
+                        if (!File.Exists(path))
+                        {
+                            Console.WriteLine("File not found.");
+                            return;
+                        }
+                        FontFace font = null!;
+                        if (Path.GetExtension(path).Equals(".ttc", StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            font = FontCollection.Load(path)?.FirstOrDefault()?.Load();
+                        }
+                        else
+                        {
+                            font = FontFace.Load(path);
+                        }
+                        if (font is null) return;
+
+                        Console.Write("Input text (default '一二三四五'): ");
+                        var txt = Console.ReadLine();
+                        if (string.IsNullOrEmpty(txt)) txt = "一二三四五";
+
+                        Console.Write("Input font size 0..1 (default 0.18): ");
+                        var fsStr = Console.ReadLine();
+                        float fs = float.TryParse(fsStr, out var fsv) ? fsv : 0.18f;
+
+                        var entry = new TextEntry
+                        {
+                            Text = txt,
+                            FontName = font.FamilyName,
+                            FontSize = fs,
+                            X = 0f,
+                            Y = 0f,
+                            FillR = 0, FillG = 0, FillB = 0, FillA = 1f,
+                        };
+
+                        Console.WriteLine($"\n=== Font: {font.FamilyName} / {font.SubfamilyName} ===");
+                        Console.WriteLine($"=== UPM: {font.UnitsPerEm} ===");
+                        Console.WriteLine($"=== Text: '{txt}' (len={txt.Length})  FontSize={fs} ===\n");
+
+                        Console.WriteLine("--- Measure ---");
+                        var (mw, mh) = new NormalTypesettingEngine().Measure(entry, font);
+                        Console.WriteLine($"\nMeasure -> width={mw:F4}  height={mh:F4}");
+
+                        Console.WriteLine("\n--- Per-Character Glyph Bounds (em units) ---");
+                        var upem = font.UnitsPerEm;
+                        foreach (var ch in txt)
+                        {
+                            var gi = font.GetGlyphIndex(ch);
+                            var glyph = font.GetGlyph(gi);
+                            if (glyph != null && !glyph.IsEmpty)
+                            {
+                                var wEm = (glyph.XMax - glyph.XMin) / (float)upem;
+                                var hEm = (glyph.YMax - glyph.YMin) / (float)upem;
+                                Console.WriteLine($"  '{ch}' (glyph {gi}): bbox=({glyph.XMin},{glyph.YMin})-({glyph.XMax},{glyph.YMax}) font-units,  size={wEm:F6}×{hEm:F6} em");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"  '{ch}' (glyph {gi}): (empty glyph)");
+                            }
+                        }
+
+                        Console.WriteLine("\n--- Layout ---");
+                        var vp = new NormalTypesettingEngine().Layout(entry, font);
+                        Console.WriteLine($"\nLayout elements: {vp.Elements.Count}");
+                        return;
+                    }
+
                 case "glyph2VectPicture":
                     {
                         Console.Write("Input font file path: ");

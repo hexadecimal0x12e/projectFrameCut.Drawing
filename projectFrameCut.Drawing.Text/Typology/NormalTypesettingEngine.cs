@@ -36,6 +36,22 @@ public class NormalTypesettingEngine : ITypesettingEngine
     /// </summary>
     public IList<FontFace> FallbackFonts { get; set; } = new List<FontFace>();
 
+    /// <summary>
+    /// When <c>true</c>, each rendered glyph also gets visual debug overlays:
+    /// a cyan box showing the character's full measured advance,
+    /// a green box for the character spacing portion,
+    /// and an orange box for the word spacing portion (on spaces).
+    /// </summary>
+    public bool DebugMode { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, <see cref="DumpCharAdvance"/> writes one line per
+    /// character to the debug/console output during <see cref="Layout"/> and
+    /// <see cref="Measure"/>. Used to diagnose unexpected advance widths.
+    /// Default is <c>true</c>; flip to <c>false</c> to silence.
+    /// </summary>
+    public static bool DebugDumpAdvance { get; set; } = true;
+
     // ──────────────────────────────────────────────
     //  Public API
     // ──────────────────────────────────────────────
@@ -62,14 +78,17 @@ public class NormalTypesettingEngine : ITypesettingEngine
 
         foreach (var line in lines)
         {
-            LayoutLine(line, font, spaceAdvanceWidth, baselineY, result, entry);
+            LayoutLine(line, font, spaceGlyphIndex, spaceAdvanceWidth, baselineY, result, entry);
             baselineY += lineHeight;
         }
 
         foreach (var element in result.Elements)
         {
-            element.RelativeX += entry.X;
-            element.RelativeY += entry.Y;
+            // Store the text-block origin separately so the renderer can map it
+            // with canvas width/height while per-glyph RelativeX/Y (cursor advances
+            // in height-normalised space) are mapped with uniform min(w,h) scale.
+            element.BaseX = entry.X;
+            element.BaseY = entry.Y;
             element.LayerIndex = entry.LayerIndex;
             element.Rotation = entry.Rotation;
         }
@@ -82,6 +101,8 @@ public class NormalTypesettingEngine : ITypesettingEngine
     {
         if (string.IsNullOrEmpty(entry.Text))
             return (0f, 0f);
+
+        DumpTextCodepoints("Measure", entry.Text);
 
         float lineHeight = entry.FontSize * (1f + entry.LineSpacing);
 
@@ -120,10 +141,13 @@ public class NormalTypesettingEngine : ITypesettingEngine
                     }
                 }
 
+                float charAdvance;
                 if (c == ' ')
                 {
                     float spaceScale = charFontSize / entry.FontSize;
-                    lineWidth += spaceAdvanceWidth * spaceScale + charWordSpacing + charCharSpacing;
+                    charAdvance = spaceAdvanceWidth * spaceScale + charWordSpacing + charCharSpacing;
+                    DumpCharAdvance(i, "Measure", c, font, spaceGlyphIndex,
+                        charFontSize, charCharSpacing, charAdvance);
                 }
                 else
                 {
@@ -132,8 +156,11 @@ public class NormalTypesettingEngine : ITypesettingEngine
                     if (rFont.IsVariableFont && charVariationAxes.Count > 0)
                         rFont.SetVariationAxes(charVariationAxes);
 
-                    lineWidth += ComputeCharacterAdvance(rFont, rIdx, charFontSize, charCharSpacing);
+                    charAdvance = ComputeCharacterAdvance(rFont, rIdx, charFontSize, charCharSpacing);
+                    DumpCharAdvance(i, "Measure", c, rFont, rIdx,
+                        charFontSize, charCharSpacing, charAdvance);
                 }
+                lineWidth += charAdvance;
             }
 
             if (lineWidth > maxWidth)
@@ -243,7 +270,7 @@ public class NormalTypesettingEngine : ITypesettingEngine
     }
 
     private void LayoutLine(
-        string line, FontFace primaryFont,
+        string line, FontFace primaryFont, ushort spaceGlyphIndex,
         float spaceAdvanceWidth, float baselineY, VectorPicture result, TextEntry entry)
     {
         int n = line.Length;
@@ -282,6 +309,8 @@ public class NormalTypesettingEngine : ITypesettingEngine
             {
                 float spaceScale = charFontSize / entry.FontSize;
                 charAdvances[i] = spaceAdvanceWidth * spaceScale + charWordSpacing + charCharSpacing;
+                DumpCharAdvance(i, "Layout", c, primaryFont, spaceGlyphIndex,
+                    charFontSize, charCharSpacing, charAdvances[i]);
                 continue;
             }
 
@@ -293,6 +322,8 @@ public class NormalTypesettingEngine : ITypesettingEngine
                 rFont.SetVariationAxes(charVariationAxes);
 
             charAdvances[i] = ComputeCharacterAdvance(rFont, rIdx, charFontSize, charCharSpacing);
+            DumpCharAdvance(i, "Layout", c, rFont, rIdx,
+                charFontSize, charCharSpacing, charAdvances[i]);
         }
 
         // ── Calculate alignment offset ──
@@ -311,22 +342,12 @@ public class NormalTypesettingEngine : ITypesettingEngine
         float cursorX = xOffset;
         for (int i = 0; i < n; i++)
         {
-            if (line[i] == ' ')
-            {
-                cursorX += charAdvances[i];
-                continue;
-            }
+            char c = line[i];
 
-            FontFace? rFont = resolvedFonts[i];
-            ushort rIdx = resolvedIndices[i];
-            if (rFont is null)
-            {
-                cursorX += charAdvances[i];
-                continue;
-            }
-
-            // Per-character style overrides for rendering (colors, etc.)
+            // Per-character style overrides for rendering (colors, spacing, etc.)
             float charFontSize = entry.FontSize;
+            float charCharSpacing = entry.CharacterSpacing;
+            float charWordSpacing = entry.WordSpacing;
             ushort fillR = entry.FillR, fillG = entry.FillG, fillB = entry.FillB;
             float fillA = entry.FillA;
             ushort strokeR = entry.StrokeR, strokeG = entry.StrokeG, strokeB = entry.StrokeB;
@@ -339,6 +360,8 @@ public class NormalTypesettingEngine : ITypesettingEngine
                 {
                     var s = range.Style;
                     if (s.FontSize.HasValue) charFontSize = s.FontSize.Value;
+                    if (s.CharacterSpacing.HasValue) charCharSpacing = s.CharacterSpacing.Value;
+                    if (s.WordSpacing.HasValue) charWordSpacing = s.WordSpacing.Value;
                     if (s.FillR.HasValue) fillR = s.FillR.Value;
                     if (s.FillG.HasValue) fillG = s.FillG.Value;
                     if (s.FillB.HasValue) fillB = s.FillB.Value;
@@ -350,6 +373,28 @@ public class NormalTypesettingEngine : ITypesettingEngine
                     if (s.StrokeThickness.HasValue) strokeThickness = s.StrokeThickness.Value;
                     if (s.VariationAxes is not null) charVariationAxes = s.VariationAxes;
                 }
+            }
+
+            if (c == ' ')
+            {
+                if (DebugMode)
+                    AddDebugBoxes(result, cursorX, baselineY, charAdvances[i],
+                        charFontSize, charCharSpacing, charWordSpacing, c, entry,
+                        primaryFont, i == 0);
+                cursorX += charAdvances[i];
+                continue;
+            }
+
+            FontFace? rFont = resolvedFonts[i];
+            ushort rIdx = resolvedIndices[i];
+            if (rFont is null)
+            {
+                if (DebugMode)
+                    AddDebugBoxes(result, cursorX, baselineY, charAdvances[i],
+                        charFontSize, charCharSpacing, charWordSpacing, c, entry,
+                        primaryFont, i == 0);
+                cursorX += charAdvances[i];
+                continue;
             }
 
             if (rFont.IsVariableFont && charVariationAxes.Count > 0)
@@ -369,11 +414,184 @@ public class NormalTypesettingEngine : ITypesettingEngine
                     element.WithFill(fillR, fillG, fillB, fillA);
                 if (strokeThickness > 0f && strokeA > 0f)
                     element.WithStroke(strokeR, strokeG, strokeB, strokeA, strokeThickness);
-
+                
+                element.WithShowEmBox(DebugMode);
                 result.Elements.Add(element);
+            }
+
+            if (DebugMode)
+            {
+                AddDebugBoxes(result, cursorX, baselineY, charAdvances[i],
+                    charFontSize, charCharSpacing, charWordSpacing, c, entry,
+                    primaryFont, i == 0);
             }
 
             cursorX += charAdvances[i];
         }
+    }
+
+    /// <summary>
+    /// Render a short debug label string as individual <see cref="GlyphCanvasElement"/>s
+    /// at (x, y) with black fill. Used by <see cref="AddDebugBoxes"/> to annotate
+    /// advance widths directly on the debug visuals.
+    /// </summary>
+    private static void AddDebugLabel(
+        VectorPicture result, float x, float y, string text,
+        FontFace font, float fontSize, int layerIndex, float rotation)
+    {
+        float cursor = 0f;
+        foreach (char ch in text)
+        {
+            ushort glyphIdx = font.GetGlyphIndex(ch);
+            if (glyphIdx == 0)
+            {
+                cursor += fontSize * 0.35f;
+                continue;
+            }
+
+            Glyph? glyph = font.GetVariedGlyph(glyphIdx);
+            if (glyph is null || glyph.IsEmpty)
+            {
+                cursor += fontSize * 0.35f;
+                continue;
+            }
+
+            var element = new GlyphCanvasElement(glyph, font.UnitsPerEm)
+            {
+                FontSize = fontSize,
+                RelativeX = x + cursor,
+                RelativeY = y,
+                LayerIndex = layerIndex,
+                Rotation = rotation,
+            }.WithFill(0, 0, 0, 1f);
+            result.Elements.Add(element);
+
+            float adv = font.GetAdvanceWidth(glyphIdx) * (fontSize / font.UnitsPerEm);
+            cursor += adv < fontSize * 0.1f ? fontSize * 0.35f : adv;
+        }
+    }
+
+    private static void AddDebugBoxes(
+        VectorPicture result, float cursorX, float baselineY, float advance,
+        float charFontSize, float charCharSpacing, float charWordSpacing,
+        char c, TextEntry entry, FontFace primaryFont, bool showHeightLabel)
+    {
+        float emTop = baselineY - charFontSize;
+        int debugLayer = entry.LayerIndex < int.MaxValue ? entry.LayerIndex + 1 : int.MaxValue;
+
+        // Full measured advance box (cyan outline)
+        // UseUniformScale keeps the debug boxes in the same coordinate space as glyphs.
+        var advBox = ShapeCanvasElement.DrawRectangle(advance, charFontSize);
+        advBox.UseUniformScale = true;
+        advBox.RelativeX = cursorX;
+        advBox.RelativeY = emTop;
+        advBox.LayerIndex = debugLayer;
+        advBox.Rotation = entry.Rotation;
+        result.Elements.Add(advBox.WithStroke((ushort)Random.Shared.Next(0,65535), (ushort)Random.Shared.Next(0,65535), (ushort)Random.Shared.Next(0,65535), 1f, 1f));
+
+        // Character spacing box (green outline) — trailing edge of the advance
+        if (MathF.Abs(charCharSpacing) > 0.0001f && advance > charCharSpacing + 0.0001f)
+        {
+            var csBox = ShapeCanvasElement.DrawRectangle(charCharSpacing, charFontSize);
+            csBox.UseUniformScale = true;
+            csBox.RelativeX = cursorX + advance - charCharSpacing;
+            csBox.RelativeY = emTop;
+            csBox.LayerIndex = debugLayer;
+            csBox.Rotation = entry.Rotation;
+            result.Elements.Add(csBox.WithFill((ushort)Random.Shared.Next(0,65535), (ushort)Random.Shared.Next(0,65535), (ushort)Random.Shared.Next(0,65535), 1f));
+        }
+
+        // Word spacing box (orange outline) — before char spacing, for spaces
+        if (c == ' ' && MathF.Abs(charWordSpacing) > 0.0001f &&
+            advance > charCharSpacing + charWordSpacing + 0.0001f)
+        {
+            var wsBox = ShapeCanvasElement.DrawRectangle(charWordSpacing, charFontSize);
+            wsBox.UseUniformScale = true;
+            wsBox.RelativeX = cursorX + advance - charCharSpacing - charWordSpacing;
+            wsBox.RelativeY = emTop;
+            wsBox.LayerIndex = debugLayer;
+            wsBox.Rotation = entry.Rotation;
+            result.Elements.Add(wsBox.WithFill((ushort)Random.Shared.Next(0,65535), (ushort)Random.Shared.Next(0,65535), (ushort)Random.Shared.Next(0,65535), 0.5f));
+        }
+
+        // Text label: show the character’s advance width (canvas units) on every box,
+        // and the character height on the first character in each line.
+        float labelFontSize = MathF.Max(charFontSize * 0.15f, 0.012f);
+        AddDebugLabel(result, cursorX, emTop, $"w={advance:F4}",
+            primaryFont, labelFontSize, debugLayer, entry.Rotation);
+
+        if (showHeightLabel)
+        {
+            AddDebugLabel(result, cursorX, emTop + labelFontSize * 1.1f, $"h={charFontSize:F4}",
+                primaryFont, labelFontSize, debugLayer, entry.Rotation);
+        }
+    }
+
+    /// <summary>
+    /// Diagnostic dump: writes one line per character with everything that
+    /// went into the advance calculation, so unexpected widths can be
+    /// traced back to the font (hmtx) or to the engine logic.
+    /// </summary>
+    /// <remarks>
+    /// Toggled by <see cref="DebugDumpAdvance"/>. Safe to leave in place —
+    /// the <see cref="Debug.WriteLine(string)"/> call is a no-op when no
+    /// debugger / <c>Console</c> listener is attached.
+    /// </remarks>
+    private static void DumpCharAdvance(
+        int index, string context, char c, FontFace? font,
+        ushort glyphIndex, float charFontSize, float charCharSpacing,
+        float advance)
+    {
+        if (!DebugDumpAdvance) return;
+        if (font is null) return;
+
+        try
+        {
+            ushort upm = font.UnitsPerEm;
+            ushort hmtxAdv = font.GetAdvanceWidth(glyphIndex);
+            ushort variedAdv = font.GetVariedAdvanceWidth(glyphIndex);
+            string line =
+                $"[NTE/{context}] idx={index} char='{c}' U+{(int)c:X4} " +
+                $"glyph={glyphIndex} " +
+                $"hmtx={hmtxAdv}/{upm}={hmtxAdv / (float)upm:F3}em " +
+                $"varied={variedAdv}/{upm}={variedAdv / (float)upm:F3}em " +
+                $"charFS={charFontSize:F4} " +
+                $"charSpacing={charCharSpacing:F4} " +
+                $"advance={advance:F4}";
+            System.Diagnostics.Debug.WriteLine(line);
+            Console.WriteLine(line);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[NTE/{context}] idx={index} char='{c}' U+{(int)c:X4} " +
+                $"ERROR: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Print a one-line summary of the input text broken down into
+    /// codepoints (so hidden characters like U+2003 / U+3000 / zero-width
+    /// spaces can be spotted). Emitted at the start of every
+    /// <see cref="Layout"/> and <see cref="Measure"/> call.
+    /// </summary>
+    private static void DumpTextCodepoints(string context, string text)
+    {
+        if (!DebugDumpAdvance || text is null) return;
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"[NTE/{context}/text] len={text.Length} codepoints=[");
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (i > 0) sb.Append(' ');
+            int cp = char.IsHighSurrogate(text[i]) && i + 1 < text.Length
+                ? char.ConvertToUtf32(text[i], text[i + 1])
+                : text[i];
+            sb.Append($"U+{cp:X4}");
+        }
+        sb.Append("] rawBytes=");
+        sb.Append(BitConverter.ToString(System.Text.Encoding.UTF8.GetBytes(text)));
+        string line = sb.ToString();
+        System.Diagnostics.Debug.WriteLine(line);
+        Console.WriteLine(line);
     }
 }

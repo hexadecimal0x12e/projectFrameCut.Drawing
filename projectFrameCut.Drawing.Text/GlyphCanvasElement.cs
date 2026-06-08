@@ -30,7 +30,7 @@ namespace projectFrameCut.Drawing.Text;
 ///     .WithStroke(0, 0, 0, 0.5f, 2f)       // black outline
 /// );
 /// </code>
-/// </remarks>
+/// </example>
 public sealed class GlyphCanvasElement : VectorCanvasElement
 {
     private readonly Glyph _glyph;
@@ -43,6 +43,22 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
 
     /// <summary>Desired glyph height in normalized canvas coordinates (0–1).</summary>
     public float FontSize { get; set; } = 0.1f;
+
+    // ──────────────────────────────────────────────
+    //  Debug
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// When <c>true</c>, draws a semi-transparent gray square representing the
+    /// full EM square (FontSize × FontSize) behind the glyph outline. Useful
+    /// for debugging glyph positioning, alignment, and spacing.
+    /// </summary>
+    public bool ShowEmBox
+    {
+        get => _showEmBox;
+        set { _showEmBox = value; _cached = null; }
+    }
+    private bool _showEmBox;
 
     public ushort StrokeR { get; set; }
     public ushort StrokeG { get; set; }
@@ -111,6 +127,12 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
         return this;
     }
 
+    public GlyphCanvasElement WithShowEmBox(bool show = true)
+    {
+        ShowEmBox = show;
+        return this;
+    }
+
     // ──────────────────────────────────────────────
     //  Draw
     // ──────────────────────────────────────────────
@@ -127,7 +149,7 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
         bool hasFill = FillA > 0f;
         bool hasStroke = StrokeThickness > 0f && StrokeA > 0f;
 
-        if (!hasFill && !hasStroke)
+        if (!hasFill && !hasStroke && !_showEmBox)
             return _cached = [];
 
         // Flatten ALL contours into polygons using the same subdivision.
@@ -138,8 +160,10 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
             flattened[i] = pts.Count >= 3 ? pts : null!;
         }
 
-        // Classify: outer (negative signed area) vs. holes (positive signed area).
-        // Use the contour with largest absolute area as the main polygon.
+        // Find the contour with the largest absolute area to establish the
+        // "outer" winding direction. TrueType uses non-zero winding: contours
+        // that wind the same direction as the outer-most contour are outer
+        // (filled), contours that wind opposite are holes (subtracted).
         int mainIndex = -1;
         float bestAbs = -1f;
         for (int i = 0; i < flattened.Length; i++)
@@ -152,30 +176,69 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
         if (mainIndex < 0)
             return _cached = [];
 
+        // Classify by winding direction relative to the main contour.
+        float mainArea = SignedArea(flattened[mainIndex]);
+
+        var outersList = new List<Point[]>();
         var holesList = new List<Point[]>();
         for (int i = 0; i < flattened.Length; i++)
         {
-            if (i == mainIndex) continue;
-            if (flattened[i] is { Count: >= 3 } h)
-                holesList.Add(h.ToArray());
+            if (flattened[i] is not { Count: >= 3 } contour) continue;
+            if (MathF.Sign(SignedArea(contour)) == MathF.Sign(mainArea))
+                outersList.Add(contour.ToArray());
+            else
+                holesList.Add(contour.ToArray());
         }
+
+        if (outersList.Count == 0)
+            return _cached = [];
 
         var segments = new List<VectorSegment>();
 
-        // Fill: single polygon with holes.
-        if (hasFill)
+        // Debug EM square — a FontSize × FontSize gray box from (0, -FontSize)
+        // to (FontSize, 0) representing the full em square in TrueType design space
+        // (Y-up originals were negated to canvas Y-down convention).
+        if (_showEmBox)
         {
+            float em = FontSize;
             segments.Add(new PolygonVectorSegment
             {
-                Points = [.. flattened[mainIndex]],
-                Holes = holesList.Count > 0 ? holesList.ToArray() : null,
-                FillR = FillR,
-                FillG = FillG,
-                FillB = FillB,
-                FillA = FillA,
-                Thickness = 0,
-                StrokeA = 0f,
+                Points =
+                [
+                    new Point(0, -em),
+                    new Point(em, -em),
+                    new Point(em, 0),
+                    new Point(0, 0),
+                ],
+                FillR = 32768, FillG = 32768, FillB = 32768, FillA = 0.08f,
+                Thickness = 1f,
+                StrokeR = 32768, StrokeG = 32768, StrokeB = 32768, StrokeA = 0.35f,
             });
+        }
+
+        // Fill: every outer contour gets its own fill segment so that
+        // overlapping strokes (common in CJK glyphs) are correctly filled
+        // instead of producing white gaps at their intersections.
+        // True holes are only attached to the first (largest) outer contour
+        // — holes are almost always inside the dominant contour, and a
+        // hole inside a secondary outer contour would be filled over by
+        // that secondary contour's own fill segment.
+        if (hasFill)
+        {
+            for (int i = 0; i < outersList.Count; i++)
+            {
+                segments.Add(new PolygonVectorSegment
+                {
+                    Points = outersList[i],
+                    Holes = i == 0 && holesList.Count > 0 ? holesList.ToArray() : null,
+                    FillR = FillR,
+                    FillG = FillG,
+                    FillB = FillB,
+                    FillA = FillA,
+                    Thickness = 0,
+                    StrokeA = 0f,
+                });
+            }
         }
 
         // Stroke: EVERY contour (outer + holes) as individual polygons,

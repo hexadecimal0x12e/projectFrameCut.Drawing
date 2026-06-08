@@ -93,6 +93,39 @@ public sealed class FontFace : IDisposable
     public static FontCollection OpenTtcCollection(byte[] data) =>
         FontCollection.Load(data);
 
+    public static FontFace[] AutoLoad(string path)
+        => AutoLoad(File.ReadAllBytes(path));
+
+    public static FontFace[] AutoLoad(byte[] data)
+    {
+        List<FontFace> fonts = new();
+        bool ttfSeen = false, ttcSeen = false;
+    ttf:
+        try
+        {
+            ttfSeen = true;
+            return new[] { Load(data) };
+        }
+        catch
+        {
+            if (!ttcSeen) goto ttc;
+            else if(!ttfSeen) throw;
+        }
+    ttc:
+        try
+        {
+            ttcSeen = true;
+            return FontCollection.Load(data).Select(C => C.Load()).ToArray();
+        }
+        catch
+        {
+            if (!ttfSeen) goto ttf;
+            else if(!ttcSeen) throw;
+        }
+        throw new InvalidDataException("Data is not a valid TTF or TTC font.");
+    }
+
+
     // ── Font metadata ──
 
     public string FamilyName

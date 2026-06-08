@@ -1,0 +1,494 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="projectFrameCut.Drawing.Gallary.Pages.VectorPage"
+             Title="Vector Graphics">
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="12" Padding="16">
+
+            <!-- Header -->
+            <Label Text="Vector Graphics" FontSize="24" FontAttributes="Bold" />
+            <Label Text="ShapeCanvasElement Fluent API → VectorToIPicture 光栅化"
+                   FontSize="14" TextColor="Gray" Margin="0,0,0,4" />
+
+            <!-- Shape Type -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="图形类型" FontSize="16" FontAttributes="Bold" />
+                    <Picker x:Name="PickerShapeType" Title="选择图形类型..."
+                            SelectedIndexChanged="OnShapeTypeChanged" FontSize="14">
+                        <Picker.Items>
+                            <x:String>矩形 Rectangle</x:String>
+                            <x:String>圆角矩形 RoundedRectangle</x:String>
+                            <x:String>椭圆 Ellipse</x:String>
+                            <x:String>直线 Line</x:String>
+                            <x:String>多边形 Polygon</x:String>
+                            <x:String>三次贝塞尔 CubicBezier</x:String>
+                            <x:String>圆弧 Arc</x:String>
+                        </Picker.Items>
+                    </Picker>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Shape Geometry -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="几何参数" FontSize="16" FontAttributes="Bold" />
+
+                    <!-- Rectangle (also used by RoundedRectangle) -->
+                    <VerticalStackLayout x:Name="GeoRect" Spacing="6">
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="宽度" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderRectW" Grid.Column="1"
+                                    Minimum="0.05" Maximum="1" Value="0.6"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelRectW" Grid.Column="2"
+                                   Text="0.60" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="高度" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderRectH" Grid.Column="1"
+                                    Minimum="0.05" Maximum="1" Value="0.5"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelRectH" Grid.Column="2"
+                                   Text="0.50" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <!-- Corner Radius (only for RoundedRectangle) -->
+                        <VerticalStackLayout x:Name="GeoCorner" Spacing="2">
+                            <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                                <Label Text="圆角" VerticalOptions="Center" FontSize="13" />
+                                <Slider x:Name="SliderCorner" Grid.Column="1"
+                                        Minimum="0" Maximum="0.3" Value="0.06"
+                                        ValueChanged="OnSliderChanged" />
+                                <Label x:Name="LabelCorner" Grid.Column="2"
+                                       Text="0.06" VerticalOptions="Center"
+                                       HorizontalTextAlignment="End" FontSize="12" />
+                            </Grid>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+
+                    <!-- Ellipse -->
+                    <VerticalStackLayout x:Name="GeoEllipse" Spacing="6" IsVisible="False">
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="半径 X" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderEllipseRX" Grid.Column="1"
+                                    Minimum="0.05" Maximum="0.5" Value="0.2"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelEllipseRX" Grid.Column="2"
+                                   Text="0.20" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="半径 Y" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderEllipseRY" Grid.Column="1"
+                                    Minimum="0.05" Maximum="0.5" Value="0.3"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelEllipseRY" Grid.Column="2"
+                                   Text="0.30" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                    </VerticalStackLayout>
+
+                    <!-- Line -->
+                    <VerticalStackLayout x:Name="GeoLine" Spacing="6" IsVisible="False">
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="起点 X" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderLineX1" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="0"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelLineX1" Grid.Column="2"
+                                   Text="0" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="起点 Y" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderLineY1" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="0"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelLineY1" Grid.Column="2"
+                                   Text="0" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="终点 X" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderLineX2" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="1"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelLineX2" Grid.Column="2"
+                                   Text="1" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="终点 Y" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderLineY2" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="1"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelLineY2" Grid.Column="2"
+                                   Text="1" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                    </VerticalStackLayout>
+
+                    <!-- Polygon Preset -->
+                    <VerticalStackLayout x:Name="GeoPolygon" Spacing="6" IsVisible="False">
+                        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                            <Label Text="预设形状" VerticalOptions="Center" FontSize="13" />
+                            <Picker x:Name="PickerPolygon" Grid.Column="1" FontSize="13">
+                                <Picker.Items>
+                                    <x:String>三角 Triangle</x:String>
+                                    <x:String>正方形 Square</x:String>
+                                    <x:String>五边形 Pentagon</x:String>
+                                    <x:String>六边形 Hexagon</x:String>
+                                    <x:String>五角星 Star</x:String>
+                                    <x:String>菱形 Diamond</x:String>
+                                </Picker.Items>
+                            </Picker>
+                        </Grid>
+                    </VerticalStackLayout>
+
+                    <!-- Cubic Bezier -->
+                    <VerticalStackLayout x:Name="GeoBezier" Spacing="6" IsVisible="False">
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                            <Label Text="P1 X" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderBezX1" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="0"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelBezX1" Grid.Column="2"
+                                   Text="0" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                            <Label Text="P1 Y" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderBezY1" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="1"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelBezY1" Grid.Column="2"
+                                   Text="1" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                            <Label Text="P2 X" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderBezX2" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="0.3"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelBezX2" Grid.Column="2"
+                                   Text="0.3" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                            <Label Text="P2 Y" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderBezY2" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="0"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelBezY2" Grid.Column="2"
+                                   Text="0" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                            <Label Text="P3 X" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderBezX3" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="0.6"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelBezX3" Grid.Column="2"
+                                   Text="0.6" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                            <Label Text="P3 Y" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderBezY3" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="1"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelBezY3" Grid.Column="2"
+                                   Text="1" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                            <Label Text="P4 X" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderBezX4" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="1"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelBezX4" Grid.Column="2"
+                                   Text="1" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                            <Label Text="P4 Y" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderBezY4" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="0"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelBezY4" Grid.Column="2"
+                                   Text="0" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                    </VerticalStackLayout>
+
+                    <!-- Arc -->
+                    <VerticalStackLayout x:Name="GeoArc" Spacing="6" IsVisible="False">
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="中心 X" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderArcX" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="0.5"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelArcX" Grid.Column="2"
+                                   Text="0.5" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="中心 Y" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderArcY" Grid.Column="1"
+                                    Minimum="0" Maximum="1" Value="0.5"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelArcY" Grid.Column="2"
+                                   Text="0.5" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="半径 X" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderArcRX" Grid.Column="1"
+                                    Minimum="0.05" Maximum="0.5" Value="0.3"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelArcRX" Grid.Column="2"
+                                   Text="0.30" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="半径 Y" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderArcRY" Grid.Column="1"
+                                    Minimum="0.05" Maximum="0.5" Value="0.3"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelArcRY" Grid.Column="2"
+                                   Text="0.30" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="起始角" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderArcStart" Grid.Column="1"
+                                    Minimum="0" Maximum="360" Value="0"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelArcStart" Grid.Column="2"
+                                   Text="0°" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                        <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                            <Label Text="扫掠角" VerticalOptions="Center" FontSize="13" />
+                            <Slider x:Name="SliderArcSweep" Grid.Column="1"
+                                    Minimum="0" Maximum="360" Value="270"
+                                    ValueChanged="OnSliderChanged" />
+                            <Label x:Name="LabelArcSweep" Grid.Column="2"
+                                   Text="270°" VerticalOptions="Center"
+                                   HorizontalTextAlignment="End" FontSize="12" />
+                        </Grid>
+                    </VerticalStackLayout>
+
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Fill Color -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="填充颜色" FontSize="16" FontAttributes="Bold" />
+                    <Grid ColumnDefinitions="55,*,55" Margin="0,1">
+                        <Label Text="R" VerticalOptions="Center" FontSize="13" TextColor="#E74C3C" />
+                        <Slider x:Name="SliderFillR" Grid.Column="1"
+                                Minimum="0" Maximum="255" Value="100"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelFillR" Grid.Column="2"
+                               Text="100" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="55,*,55" Margin="0,1">
+                        <Label Text="G" VerticalOptions="Center" FontSize="13" TextColor="#27AE60" />
+                        <Slider x:Name="SliderFillG" Grid.Column="1"
+                                Minimum="0" Maximum="255" Value="180"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelFillG" Grid.Column="2"
+                               Text="180" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="55,*,55" Margin="0,1">
+                        <Label Text="B" VerticalOptions="Center" FontSize="13" TextColor="#2980B9" />
+                        <Slider x:Name="SliderFillB" Grid.Column="1"
+                                Minimum="0" Maximum="255" Value="255"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelFillB" Grid.Column="2"
+                               Text="255" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="55,*,55" Margin="0,1">
+                        <Label Text="A" VerticalOptions="Center" FontSize="13" TextColor="Gray" />
+                        <Slider x:Name="SliderFillA" Grid.Column="1"
+                                Minimum="0" Maximum="1" Value="0.7"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelFillA" Grid.Column="2"
+                               Text="0.70" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Stroke -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="6">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <Label Text="描边" FontSize="16" FontAttributes="Bold"
+                               VerticalOptions="Center" />
+                        <Switch x:Name="SwitchStroke" Grid.Column="2"
+                                IsToggled="True" Toggled="OnStrokeToggled" />
+                    </Grid>
+
+                    <VerticalStackLayout x:Name="StrokeControls" Spacing="4">
+                    <Grid ColumnDefinitions="55,*,55" Margin="0,1">
+                        <Label Text="R" VerticalOptions="Center" FontSize="13" TextColor="#E74C3C" />
+                        <Slider x:Name="SliderStrokeR" Grid.Column="1"
+                                Minimum="0" Maximum="255" Value="0"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelStrokeR" Grid.Column="2"
+                               Text="0" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="55,*,55" Margin="0,1">
+                        <Label Text="G" VerticalOptions="Center" FontSize="13" TextColor="#27AE60" />
+                        <Slider x:Name="SliderStrokeG" Grid.Column="1"
+                                Minimum="0" Maximum="255" Value="0"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelStrokeG" Grid.Column="2"
+                               Text="0" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="55,*,55" Margin="0,1">
+                        <Label Text="B" VerticalOptions="Center" FontSize="13" TextColor="#2980B9" />
+                        <Slider x:Name="SliderStrokeB" Grid.Column="1"
+                                Minimum="0" Maximum="255" Value="0"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelStrokeB" Grid.Column="2"
+                               Text="0" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="55,*,55" Margin="0,1">
+                        <Label Text="A" VerticalOptions="Center" FontSize="13" TextColor="Gray" />
+                        <Slider x:Name="SliderStrokeA" Grid.Column="1"
+                                Minimum="0" Maximum="1" Value="1"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelStrokeA" Grid.Column="2"
+                               Text="1.00" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="55,*,55" Margin="0,1">
+                        <Label Text="粗细" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderStrokeThickness" Grid.Column="1"
+                                Minimum="0" Maximum="0.05" Value="0.015"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelStrokeThickness" Grid.Column="2"
+                               Text="0.015" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Position & Rotation -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="位置与旋转" FontSize="16" FontAttributes="Bold" />
+                    <Grid ColumnDefinitions="55,*,55" Margin="0,2">
+                        <Label Text="X 位置" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderPosX" Grid.Column="1"
+                                Minimum="0" Maximum="1" Value="0.2"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelPosX" Grid.Column="2"
+                               Text="0.20" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="55,*,55" Margin="0,2">
+                        <Label Text="Y 位置" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderPosY" Grid.Column="1"
+                                Minimum="0" Maximum="1" Value="0.2"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelPosY" Grid.Column="2"
+                               Text="0.20" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="55,*,55" Margin="0,2">
+                        <Label Text="旋转" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderRotation" Grid.Column="1"
+                                Minimum="0" Maximum="6.2832" Value="0"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelRotation" Grid.Column="2"
+                               Text="0°" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Output Settings -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="输出设置" FontSize="16" FontAttributes="Bold" />
+
+                    <Grid ColumnDefinitions="80,*,10,*" RowDefinitions="Auto,Auto"
+                          RowSpacing="8">
+                        <Label Text="宽度" VerticalOptions="Center" FontSize="13" />
+                        <Entry x:Name="InputWidth" Grid.Column="1" Text="500"
+                               Keyboard="Numeric" FontSize="13" />
+                        <Label Text="高度" Grid.Column="2" VerticalOptions="Center"
+                               FontSize="13" HorizontalTextAlignment="Center" />
+                        <Entry x:Name="InputHeight" Grid.Column="3" Text="400"
+                               Keyboard="Numeric" FontSize="13" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto"
+                          RowSpacing="8">
+                        <Label Text="透明背景" VerticalOptions="Center" FontSize="13" />
+                        <Switch x:Name="SwitchTransparent" Grid.Column="1"
+                                IsToggled="False" HorizontalOptions="Start" />
+
+                        <Label Text="抗锯齿" Grid.Row="1" VerticalOptions="Center"
+                               FontSize="13" />
+                        <Picker x:Name="PickerAntiAlias" Grid.Row="1" Grid.Column="1"
+                                HorizontalOptions="Start" FontSize="13"
+                                SelectedIndex="0">
+                            <Picker.Items>
+                                <x:String>无</x:String>
+                                <x:String>SSAA 2x</x:String>
+                                <x:String>SSAA 4x</x:String>
+                            </Picker.Items>
+                        </Picker>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Render Button -->
+            <Button x:Name="RenderButton"
+                    Text="渲染" FontSize="16"
+                    BackgroundColor="#007AFF" TextColor="White"
+                    Clicked="OnRenderClicked"
+                    HeightRequest="44" CornerRadius="8" />
+
+            <!-- Preview -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="预览" FontSize="16" FontAttributes="Bold" />
+                    <ActivityIndicator x:Name="Spinner" IsRunning="True"
+                                       HorizontalOptions="Center" HeightRequest="40" />
+                    <Image x:Name="DemoImage" IsVisible="False"
+                           HorizontalOptions="Center" MaximumHeightRequest="400" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Label Text="ShapeCanvasElement 流式 API → VectorToIPicture 光栅化。支持 Rectangle、Ellipse、Polygon、RoundedRectangle、Line、CubicBezier、Arc。"
+                   FontSize="12" TextColor="Gray" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

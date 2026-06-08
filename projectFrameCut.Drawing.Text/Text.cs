@@ -48,15 +48,7 @@ namespace projectFrameCut.Drawing.Text
 
             var picture = ts.Layout(entry, primaryFont);
 
-            // Position elements according to the TextEntry coordinates
-            foreach (var element in picture.Elements)
-            {
-                element.RelativeX += entry.X;
-                element.RelativeY += entry.Y;
-                element.LayerIndex = entry.LayerIndex;
-                element.Rotation = entry.Rotation;
-            }
-
+            // Layout already sets BaseX/Y and LayerIndex/Rotation on every element.
             return picture;
         }
     }

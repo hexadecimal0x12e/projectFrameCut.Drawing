@@ -61,11 +61,26 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
             foreach (var element in canvas.Elements.OrderBy(e => e.LayerIndex))
             {
-                var ox = element.RelativeX * width;
-                var oy = element.RelativeY * height;
+                float ox, oy, scaleX, scaleY;
+                if (element.UseUniformScale)
+                {
+                    float us = Math.Min(width, height);
+                    ox = element.BaseX * width + element.RelativeX * us;
+                    oy = element.BaseY * height + element.RelativeY * us;
+                    scaleX = us;
+                    scaleY = us;
+                }
+                else
+                {
+                    ox = element.RelativeX * width;
+                    oy = element.RelativeY * height;
+                    scaleX = width;
+                    scaleY = height;
+                }
+
                 foreach (var segment in element.Draw())
                 {
-                    var tag = SegmentToSvgTag(segment, ox, oy, width, height);
+                    var tag = SegmentToSvgTag(segment, ox, oy, scaleX, scaleY);
                     if (tag != null)
                         sb.Append(tag);
                 }
@@ -79,19 +94,19 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // Segment → SVG tag helpers
         // ---------------------------------------------------------------
 
-        private static string? SegmentToSvgTag(VectorSegment seg, float ox, float oy, int w, int h)
+        private static string? SegmentToSvgTag(VectorSegment seg, float ox, float oy, float scaleX, float scaleY)
         {
             return seg switch
             {
-                StraightLineVectorSegment s => LineToSvg(s, ox, oy, w, h),
-                RoundedRectangleVectorSegment s => RoundedRectToSvg(s, ox, oy, w, h),
-                RectangleVectorSegment s => RectToSvg(s, ox, oy, w, h),
-                EllipseVectorSegment s => EllipseToSvg(s, ox, oy, w, h),
-                CubicBezierVectorSegment s => CubicBezierToSvg(s, ox, oy, w, h),
-                QuadraticBezierVectorSegment s => QuadraticBezierToSvg(s, ox, oy, w, h),
-                ArcVectorSegment s => ArcToSvg(s, ox, oy, w, h),
-                PolygonVectorSegment s => PolygonToSvg(s, ox, oy, w, h),
-                PolylineVectorSegment s => PolylineToSvg(s, ox, oy, w, h),
+                StraightLineVectorSegment s => LineToSvg(s, ox, oy, scaleX, scaleY),
+                RoundedRectangleVectorSegment s => RoundedRectToSvg(s, ox, oy, scaleX, scaleY),
+                RectangleVectorSegment s => RectToSvg(s, ox, oy, scaleX, scaleY),
+                EllipseVectorSegment s => EllipseToSvg(s, ox, oy, scaleX, scaleY),
+                CubicBezierVectorSegment s => CubicBezierToSvg(s, ox, oy, scaleX, scaleY),
+                QuadraticBezierVectorSegment s => QuadraticBezierToSvg(s, ox, oy, scaleX, scaleY),
+                ArcVectorSegment s => ArcToSvg(s, ox, oy, scaleX, scaleY),
+                PolygonVectorSegment s => PolygonToSvg(s, ox, oy, scaleX, scaleY),
+                PolylineVectorSegment s => PolylineToSvg(s, ox, oy, scaleX, scaleY),
                 _ => null,
             };
         }
@@ -126,17 +141,17 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             return sb.ToString();
         }
 
-        private static float CX(float segX, float ox, int w) => ox + segX * w;
-        private static float CY(float segY, float oy, int h) => oy + segY * h;
+        private static float CX(float segX, float ox, float scaleX) => ox + segX * scaleX;
+        private static float CY(float segY, float oy, float scaleY) => oy + segY * scaleY;
 
-        private static string LineToSvg(StraightLineVectorSegment s, float ox, float oy, int w, int h)
+        private static string LineToSvg(StraightLineVectorSegment s, float ox, float oy, float scaleX, float scaleY)
         {
             if (s.Thickness <= 0f || s.StrokeA <= 0f)
                 return null!;
 
             var sb = new StringBuilder();
-            sb.Append(CI, $"<line x1=\"{Fmt(CX(s.X1, ox, w))}\" y1=\"{Fmt(CY(s.Y1, oy, h))}\"");
-            sb.Append(CI, $" x2=\"{Fmt(CX(s.X2, ox, w))}\" y2=\"{Fmt(CY(s.Y2, oy, h))}\"");
+            sb.Append(CI, $"<line x1=\"{Fmt(CX(s.X1, ox, scaleX))}\" y1=\"{Fmt(CY(s.Y1, oy, scaleY))}\"");
+            sb.Append(CI, $" x2=\"{Fmt(CX(s.X2, ox, scaleX))}\" y2=\"{Fmt(CY(s.Y2, oy, scaleY))}\"");
             sb.Append(CI, $" stroke=\"{ColorToHex(s.StrokeR, s.StrokeG, s.StrokeB)}\"");
             sb.Append(CI, $" stroke-width=\"{Fmt(s.Thickness)}\"");
             if (s.StrokeA < 1f)
@@ -147,12 +162,12 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             return sb.ToString();
         }
 
-        private static string RectToSvg(RectangleVectorSegment s, float ox, float oy, int w, int h)
+        private static string RectToSvg(RectangleVectorSegment s, float ox, float oy, float scaleX, float scaleY)
         {
-            var x = CX(s.X, ox, w);
-            var y = CY(s.Y, oy, h);
-            var rw = s.Width * w;
-            var rh = s.Height * h;
+            var x = CX(s.X, ox, scaleX);
+            var y = CY(s.Y, oy, scaleY);
+            var rw = s.Width * scaleX;
+            var rh = s.Height * scaleY;
 
             return
                 $"<rect x=\"{Fmt(x)}\" y=\"{Fmt(y)}\" width=\"{Fmt(rw)}\" height=\"{Fmt(rh)}\"" +
@@ -160,13 +175,13 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 "/>";
         }
 
-        private static string RoundedRectToSvg(RoundedRectangleVectorSegment s, float ox, float oy, int w, int h)
+        private static string RoundedRectToSvg(RoundedRectangleVectorSegment s, float ox, float oy, float scaleX, float scaleY)
         {
-            var x = CX(s.X, ox, w);
-            var y = CY(s.Y, oy, h);
-            var rw = s.Width * w;
-            var rh = s.Height * h;
-            var radius = s.CornerRadius * Math.Min(w, h);
+            var x = CX(s.X, ox, scaleX);
+            var y = CY(s.Y, oy, scaleY);
+            var rw = s.Width * scaleX;
+            var rh = s.Height * scaleY;
+            var radius = s.CornerRadius * Math.Min(scaleX, scaleY);
 
             return
                 $"<rect x=\"{Fmt(x)}\" y=\"{Fmt(y)}\" width=\"{Fmt(rw)}\" height=\"{Fmt(rh)}\"" +
@@ -175,12 +190,12 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 "/>";
         }
 
-        private static string EllipseToSvg(EllipseVectorSegment s, float ox, float oy, int w, int h)
+        private static string EllipseToSvg(EllipseVectorSegment s, float ox, float oy, float scaleX, float scaleY)
         {
-            var cx = CX(s.X, ox, w);
-            var cy = CY(s.Y, oy, h);
-            var rx = s.RadiusX * w;
-            var ry = s.RadiusY * h;
+            var cx = CX(s.X, ox, scaleX);
+            var cy = CY(s.Y, oy, scaleY);
+            var rx = s.RadiusX * scaleX;
+            var ry = s.RadiusY * scaleY;
 
             return
                 $"<ellipse cx=\"{Fmt(cx)}\" cy=\"{Fmt(cy)}\" rx=\"{Fmt(rx)}\" ry=\"{Fmt(ry)}\"" +
@@ -188,15 +203,15 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 "/>";
         }
 
-        private static string CubicBezierToSvg(CubicBezierVectorSegment s, float ox, float oy, int w, int h)
+        private static string CubicBezierToSvg(CubicBezierVectorSegment s, float ox, float oy, float scaleX, float scaleY)
         {
             if (s.Thickness <= 0f || s.StrokeA <= 0f)
                 return null!;
 
-            var x1 = CX(s.X1, ox, w); var y1 = CY(s.Y1, oy, h);
-            var x2 = CX(s.X2, ox, w); var y2 = CY(s.Y2, oy, h);
-            var x3 = CX(s.X3, ox, w); var y3 = CY(s.Y3, oy, h);
-            var x4 = CX(s.X4, ox, w); var y4 = CY(s.Y4, oy, h);
+            var x1 = CX(s.X1, ox, scaleX); var y1 = CY(s.Y1, oy, scaleY);
+            var x2 = CX(s.X2, ox, scaleX); var y2 = CY(s.Y2, oy, scaleY);
+            var x3 = CX(s.X3, ox, scaleX); var y3 = CY(s.Y3, oy, scaleY);
+            var x4 = CX(s.X4, ox, scaleX); var y4 = CY(s.Y4, oy, scaleY);
 
             return
                 $"<path d=\"M {Fmt(x1)},{Fmt(y1)} C {Fmt(x2)},{Fmt(y2)} {Fmt(x3)},{Fmt(y3)} {Fmt(x4)},{Fmt(y4)}\"" +
@@ -204,14 +219,14 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 "/>";
         }
 
-        private static string QuadraticBezierToSvg(QuadraticBezierVectorSegment s, float ox, float oy, int w, int h)
+        private static string QuadraticBezierToSvg(QuadraticBezierVectorSegment s, float ox, float oy, float scaleX, float scaleY)
         {
             if (s.Thickness <= 0f || s.StrokeA <= 0f)
                 return null!;
 
-            var x1 = CX(s.X1, ox, w); var y1 = CY(s.Y1, oy, h);
-            var x2 = CX(s.X2, ox, w); var y2 = CY(s.Y2, oy, h);
-            var x3 = CX(s.X3, ox, w); var y3 = CY(s.Y3, oy, h);
+            var x1 = CX(s.X1, ox, scaleX); var y1 = CY(s.Y1, oy, scaleY);
+            var x2 = CX(s.X2, ox, scaleX); var y2 = CY(s.Y2, oy, scaleY);
+            var x3 = CX(s.X3, ox, scaleX); var y3 = CY(s.Y3, oy, scaleY);
 
             return
                 $"<path d=\"M {Fmt(x1)},{Fmt(y1)} Q {Fmt(x2)},{Fmt(y2)} {Fmt(x3)},{Fmt(y3)}\"" +
@@ -219,15 +234,15 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 "/>";
         }
 
-        private static string ArcToSvg(ArcVectorSegment s, float ox, float oy, int w, int h)
+        private static string ArcToSvg(ArcVectorSegment s, float ox, float oy, float scaleX, float scaleY)
         {
             if (s.Thickness <= 0f || s.StrokeA <= 0f)
                 return null!;
 
-            var cx = CX(s.X, ox, w);
-            var cy = CY(s.Y, oy, h);
-            var rx = s.RadiusX * w;
-            var ry = s.RadiusY * h;
+            var cx = CX(s.X, ox, scaleX);
+            var cy = CY(s.Y, oy, scaleY);
+            var rx = s.RadiusX * scaleX;
+            var ry = s.RadiusY * scaleY;
 
             if (rx <= 0f || ry <= 0f)
                 return null!;
@@ -250,7 +265,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 "/>";
         }
 
-        private static string PolygonToSvg(PolygonVectorSegment s, float ox, float oy, int w, int h)
+        private static string PolygonToSvg(PolygonVectorSegment s, float ox, float oy, float scaleX, float scaleY)
         {
             if (s.Points.Length < 3)
                 return null!;
@@ -261,9 +276,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             {
                 // Use <path> with evenodd fill-rule so holes punch through.
                 var d = new StringBuilder();
-                AppendContourPath(d, s.Points, ox, oy, w, h);
+                AppendContourPath(d, s.Points, ox, oy, scaleX, scaleY);
                 foreach (var hole in s.Holes!)
-                    AppendContourPath(d, hole, ox, oy, w, h);
+                    AppendContourPath(d, hole, ox, oy, scaleX, scaleY);
 
                 return
                     $"<path fill-rule=\"evenodd\" d=\"{d}\"" +
@@ -273,7 +288,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
             var pts = new StringBuilder();
             foreach (var p in s.Points)
-                pts.Append(CI, $"{Fmt(CX(p.X, ox, w))},{Fmt(CY(p.Y, oy, h))} ");
+                pts.Append(CI, $"{Fmt(CX(p.X, ox, scaleX))},{Fmt(CY(p.Y, oy, scaleY))} ");
 
             return
                 $"<polygon points=\"{pts.ToString().TrimEnd()}\"" +
@@ -281,19 +296,19 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 "/>";
         }
 
-        private static void AppendContourPath(StringBuilder d, Point[] contour, float ox, float oy, int w, int h)
+        private static void AppendContourPath(StringBuilder d, Point[] contour, float ox, float oy, float scaleX, float scaleY)
         {
             d.Append('M');
-            d.Append(CI, $"{Fmt(CX(contour[0].X, ox, w))},{Fmt(CY(contour[0].Y, oy, h))}");
+            d.Append(CI, $"{Fmt(CX(contour[0].X, ox, scaleX))},{Fmt(CY(contour[0].Y, oy, scaleY))}");
             for (int i = 1; i < contour.Length; i++)
             {
                 d.Append(" L");
-                d.Append(CI, $"{Fmt(CX(contour[i].X, ox, w))},{Fmt(CY(contour[i].Y, oy, h))}");
+                d.Append(CI, $"{Fmt(CX(contour[i].X, ox, scaleX))},{Fmt(CY(contour[i].Y, oy, scaleY))}");
             }
             d.Append(" Z ");
         }
 
-        private static string PolylineToSvg(PolylineVectorSegment s, float ox, float oy, int w, int h)
+        private static string PolylineToSvg(PolylineVectorSegment s, float ox, float oy, float scaleX, float scaleY)
         {
             if (s.Thickness <= 0f || s.StrokeA <= 0f || s.Points.Length < 2)
                 return null!;
@@ -301,7 +316,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             var pts = new StringBuilder();
             foreach (var p in s.Points)
             {
-                pts.Append(CI, $"{Fmt(CX(p.X, ox, w))},{Fmt(CY(p.Y, oy, h))} ");
+                pts.Append(CI, $"{Fmt(CX(p.X, ox, scaleX))},{Fmt(CY(p.Y, oy, scaleY))} ");
             }
 
             return

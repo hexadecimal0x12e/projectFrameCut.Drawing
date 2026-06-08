@@ -25,6 +25,17 @@ namespace projectFrameCut.Drawing.Vector
         /// the Y-axis position of the element relative to the canvas, where 0 means the top edge of the canvas and 1 means the bottom edge of the canvas.
         /// </summary>
         public float RelativeY { get; set; }
+
+        /// <summary>
+        /// Optional canvas-space origin for this element. When <see cref="UseUniformScale"/>
+        /// is <c>true</c>, the final pixel position is
+        /// <c>BaseX * canvasWidth + RelativeX * min(canvasWidth, canvasHeight)</c>
+        /// (Y uses <c>canvasHeight</c> and the same <c>min</c> factor). This separates
+        /// block-level positioning (canvas space) from per-glyph cursor advances
+        /// (uniform space), keeping CJK character packing tight on non-square canvases.
+        /// </summary>
+        public float BaseX { get; set; }
+        public float BaseY { get; set; }
         /// <summary>
         /// The index of the layer this element belongs to.
         /// Elements with higher layer index will be drawn on top of elements with lower layer index.
@@ -44,9 +55,10 @@ namespace projectFrameCut.Drawing.Vector
         /// uniformly (using <c>min(canvasWidth, canvasHeight)</c> for both X and Y) so the
         /// element's intrinsic shape is preserved regardless of the canvas aspect ratio.
         /// <para>
-        /// The element's position (<see cref="RelativeX"/> / <see cref="RelativeY"/>) is still
-        /// interpreted in 0–1 of the canvas width/height, so the element can be placed anywhere
-        /// on the canvas; only its size is normalized to the shorter canvas dimension.
+        /// The element's position (<see cref="RelativeX"/> / <see cref="RelativeY"/>) is
+        /// still interpreted in 0–1 of the canvas width/height, so the element can be
+        /// placed anywhere on the canvas; only its size is normalized to the shorter
+        /// canvas dimension.
         /// </para>
         /// <para>
         /// Use this for glyphs and any other element whose natural aspect ratio must not

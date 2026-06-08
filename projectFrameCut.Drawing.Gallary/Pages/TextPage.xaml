@@ -1,0 +1,318 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="projectFrameCut.Drawing.Gallary.Pages.TextPage"
+             Title="Text Rendering">
+
+    <ScrollView x:Name="MainScroll" VerticalScrollBarVisibility="Always">
+        <VerticalStackLayout Spacing="12" Padding="16">
+
+            <!-- Header -->
+            <Label Text="Text Rendering" FontSize="24" FontAttributes="Bold" />
+            <Label Text="NormalTypesettingEngine 排版 → VectorToIPicture 光栅化"
+                   FontSize="14" TextColor="Gray" Margin="0,0,0,4" />
+
+            <!-- Font Selection -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="选择字体" FontSize="16" FontAttributes="Bold" />
+                    <Picker x:Name="FontPicker" Title="选择一个字体..."
+                            SelectedIndexChanged="OnFontSelected" FontSize="14" />
+                    <Label x:Name="FontCountLabel" Text="正在扫描系统字体..."
+                           FontSize="12" TextColor="Gray" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Text Content -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="文本内容" FontSize="16" FontAttributes="Bold" />
+                    <Entry x:Name="InputText" Text="Hello MAUI!"
+                           FontSize="14" Placeholder="输入渲染文本..." />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Layout & Position -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="布局与位置" FontSize="16" FontAttributes="Bold" />
+
+                    <Grid ColumnDefinitions="60,*,55" RowDefinitions="Auto" Margin="0,2">
+                        <Label Text="字号" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderFontSize" Grid.Column="1"
+                                Minimum="0.01" Maximum="0.5" Value="0.18"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelFontSize" Grid.Column="2"
+                               Text="0.18" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                        <Label Text="X 位置" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderX" Grid.Column="1"
+                                Minimum="0" Maximum="1" Value="0.05"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelX" Grid.Column="2"
+                               Text="0.05" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                        <Label Text="Y 位置" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderY" Grid.Column="1"
+                                Minimum="0" Maximum="1" Value="0.4"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelY" Grid.Column="2"
+                               Text="0.40" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="60,*,55" Margin="0,2">
+                        <Label Text="旋转" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderRotation" Grid.Column="1"
+                                Minimum="0" Maximum="6.2832" Value="0"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelRotation" Grid.Column="2"
+                               Text="0°" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Fill Color -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="填充颜色" FontSize="16" FontAttributes="Bold" />
+
+                    <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                        <Label Text="R" VerticalOptions="Center" FontSize="13" TextColor="#E74C3C" />
+                        <Slider x:Name="SliderFillR" Grid.Column="1"
+                                Minimum="0" Maximum="255" Value="0"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelFillR" Grid.Column="2"
+                               Text="0" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                        <Label Text="G" VerticalOptions="Center" FontSize="13" TextColor="#27AE60" />
+                        <Slider x:Name="SliderFillG" Grid.Column="1"
+                                Minimum="0" Maximum="255" Value="0"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelFillG" Grid.Column="2"
+                               Text="0" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                        <Label Text="B" VerticalOptions="Center" FontSize="13" TextColor="#2980B9" />
+                        <Slider x:Name="SliderFillB" Grid.Column="1"
+                                Minimum="0" Maximum="255" Value="200"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelFillB" Grid.Column="2"
+                               Text="200" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                        <Label Text="A" VerticalOptions="Center" FontSize="13" TextColor="Gray" />
+                        <Slider x:Name="SliderFillA" Grid.Column="1"
+                                Minimum="0" Maximum="1" Value="1"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelFillA" Grid.Column="2"
+                               Text="1.00" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Stroke -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="6">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <Label Text="描边" FontSize="16" FontAttributes="Bold"
+                               VerticalOptions="Center" />
+                        <Switch x:Name="SwitchStroke" Grid.Column="2"
+                                IsToggled="False" Toggled="OnStrokeToggled" />
+                    </Grid>
+
+                    <VerticalStackLayout x:Name="StrokeControls" Spacing="4" IsEnabled="False">
+                    <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                        <Label Text="R" VerticalOptions="Center" FontSize="13" TextColor="#E74C3C" />
+                        <Slider x:Name="SliderStrokeR" Grid.Column="1"
+                                Minimum="0" Maximum="255" Value="0"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelStrokeR" Grid.Column="2"
+                               Text="0" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                        <Label Text="G" VerticalOptions="Center" FontSize="13" TextColor="#27AE60" />
+                        <Slider x:Name="SliderStrokeG" Grid.Column="1"
+                                Minimum="0" Maximum="255" Value="0"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelStrokeG" Grid.Column="2"
+                               Text="0" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                        <Label Text="B" VerticalOptions="Center" FontSize="13" TextColor="#2980B9" />
+                        <Slider x:Name="SliderStrokeB" Grid.Column="1"
+                                Minimum="0" Maximum="255" Value="0"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelStrokeB" Grid.Column="2"
+                               Text="0" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                        <Label Text="A" VerticalOptions="Center" FontSize="13" TextColor="Gray" />
+                        <Slider x:Name="SliderStrokeA" Grid.Column="1"
+                                Minimum="0" Maximum="1" Value="1"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelStrokeA" Grid.Column="2"
+                               Text="1.00" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="60,*,55" Margin="0,1">
+                        <Label Text="粗细" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderStrokeThickness" Grid.Column="1"
+                                Minimum="0" Maximum="0.05" Value="0.01"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelStrokeThickness" Grid.Column="2"
+                               Text="0.010" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Spacing & Alignment -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="间距与对齐" FontSize="16" FontAttributes="Bold" />
+
+                    <Grid ColumnDefinitions="75,*,55" Margin="0,2">
+                        <Label Text="字符间距" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderCharSpacing" Grid.Column="1"
+                                Minimum="0" Maximum="0.1" Value="0"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelCharSpacing" Grid.Column="2"
+                               Text="0" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="75,*,55" Margin="0,2">
+                        <Label Text="单词间距" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderWordSpacing" Grid.Column="1"
+                                Minimum="0" Maximum="0.1" Value="0"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelWordSpacing" Grid.Column="2"
+                               Text="0" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="75,*,55" Margin="0,2">
+                        <Label Text="行间距" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderLineSpacing" Grid.Column="1"
+                                Minimum="0" Maximum="1.0" Value="0.3"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelLineSpacing" Grid.Column="2"
+                               Text="0.30" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="75,*,55" Margin="0,6,0,2">
+                        <Label Text="对齐" VerticalOptions="Center" FontSize="13" />
+                        <Picker x:Name="PickerAlignment" Grid.Column="1" FontSize="13"
+                                SelectedIndexChanged="OnAlignmentChanged">
+                            <Picker.Items>
+                                <x:String>左对齐</x:String>
+                                <x:String>居中</x:String>
+                                <x:String>右对齐</x:String>
+                            </Picker.Items>
+                        </Picker>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="75,*,55" Margin="0,2">
+                        <Label Text="装饰" VerticalOptions="Center" FontSize="13" />
+                        <Picker x:Name="PickerDecoration" Grid.Column="1" FontSize="13">
+                            <Picker.Items>
+                                <x:String>无</x:String>
+                                <x:String>下划线</x:String>
+                                <x:String>删除线</x:String>
+                            </Picker.Items>
+                        </Picker>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Output Settings -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="输出设置" FontSize="16" FontAttributes="Bold" />
+
+                    <Grid ColumnDefinitions="80,*,10,*" RowDefinitions="Auto,Auto,Auto"
+                          RowSpacing="8">
+                        <Label Text="宽度" VerticalOptions="Center" FontSize="13" />
+                        <Entry x:Name="InputWidth" Grid.Column="1" Text="1280"
+                               Keyboard="Numeric" FontSize="13" />
+                        <Label Text="高度" Grid.Column="2" VerticalOptions="Center"
+                               FontSize="13" HorizontalTextAlignment="Center" />
+                        <Entry x:Name="InputHeight" Grid.Column="3" Text="720"
+                               Keyboard="Numeric" FontSize="13" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto"
+                          RowSpacing="8">
+                        <Label Text="透明背景" VerticalOptions="Center" FontSize="13" />
+                        <Switch x:Name="SwitchTransparent" Grid.Column="1"
+                                IsToggled="False" HorizontalOptions="Start" />
+
+                        <Label Text="抗锯齿" Grid.Row="1" VerticalOptions="Center"
+                               FontSize="13" />
+                        <Picker x:Name="PickerAntiAlias" Grid.Row="1" Grid.Column="1"
+                                HorizontalOptions="Start" FontSize="13"
+                                SelectedIndex="0">
+                            <Picker.Items>
+                                <x:String>无</x:String>
+                                <x:String>SSAA 2x</x:String>
+                                <x:String>SSAA 4x</x:String>
+                            </Picker.Items>
+                        </Picker>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Render Button -->
+            <Button x:Name="RenderButton"
+                    Text="渲染" FontSize="16"
+                    BackgroundColor="#007AFF" TextColor="White"
+                    Clicked="OnRenderClicked"
+                    HeightRequest="44" CornerRadius="8" />
+
+            <!-- Preview -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="预览" FontSize="16" FontAttributes="Bold" />
+                    <ActivityIndicator x:Name="Spinner" IsRunning="True"
+                                       HorizontalOptions="Center" HeightRequest="40" />
+                    <Image x:Name="DemoImage" IsVisible="False"
+                           HorizontalOptions="Center" MaximumHeightRequest="400">
+                        <Image.GestureRecognizers>
+                            <TapGestureRecognizer NumberOfTapsRequired="2"
+                                                  Tapped="OnPreviewDoubleTapped" />
+                        </Image.GestureRecognizers>
+                    </Image>
+                </VerticalStackLayout>
+            </Border>
+
+            <Label Text="TextEntry 定义样式 → NormalTypesettingEngine 排布字形 → VectorToIPicture 光栅化。"
+                   FontSize="12" TextColor="Gray" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="projectFrameCut.Drawing.Gallary.Pages.EffectsPage"
+             Title="Image Effects">
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="16" Padding="16">
+
+            <Label Text="Image Effects" FontSize="24" FontAttributes="Bold" />
+            <Label Text="通过反射自动发现 Effect 程序集中的所有效果类"
+                   FontSize="13" TextColor="Gray" Margin="0,0,0,4" />
+
+            <ActivityIndicator x:Name="Spinner" IsRunning="True"
+                               HorizontalOptions="Center" HeightRequest="40" />
+
+            <FlexLayout x:Name="EffectsContainer"
+                        Wrap="Wrap"
+                        JustifyContent="Start"
+                        AlignItems="Start" />
+
+            <Label Text="所有效果通过 Effect 项目的静态 Process 方法调用，返回新的 IPicture 实例。支持 8bpp、16bpp 和 HDR 格式。Skip：Crop、Place、Mask、Rotation（需要特殊参数）。"
+                   FontSize="12" TextColor="Gray" Margin="0,8,0,0" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

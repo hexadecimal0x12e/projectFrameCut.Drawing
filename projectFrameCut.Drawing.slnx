@@ -6,9 +6,12 @@
   <Folder Name="/Effect/">
     <Project Path="projectFrameCut.Drawing.Effect/projectFrameCut.Drawing.Effect.csproj" Id="6ab94e90-4169-484e-befe-2c83cef906c4" />
   </Folder>
+  <Folder Name="/Sample/">
+    <Project Path="projectFrameCut.Drawing.Gallary/projectFrameCut.Drawing.Gallary.csproj" />
+    <Project Path="projectFrameCut.Drawing.Test.App/projectFrameCut.Drawing.Test.App.csproj" Id="de8f51fd-3968-4a96-86a0-2e8ec9d4db06" />
+  </Folder>
   <Folder Name="/Testing/">
     <Project Path="projectFrameCut.Drawing.Benchmarks/projectFrameCut.Drawing.Benchmarks.csproj" />
-    <Project Path="projectFrameCut.Drawing.Test.App/projectFrameCut.Drawing.Test.App.csproj" Id="de8f51fd-3968-4a96-86a0-2e8ec9d4db06" />
     <Project Path="projectFrameCut.Drawing.Tests/projectFrameCut.Drawing.Tests.csproj" />
   </Folder>
   <Folder Name="/Text/">
