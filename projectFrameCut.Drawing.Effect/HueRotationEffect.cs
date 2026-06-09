@@ -4,8 +4,11 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Rotates the hue of a picture in the HSL color space.</summary>
 public static class HueRotationEffect
 {
+    /// <summary>Apply the hue rotation effect to an 8-bit picture.</summary>
+    /// <param name="angleDegrees">Hue rotation angle in degrees.</param>
     public static IPicture<byte> Process(IPicture<byte> picture, float angleDegrees)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -84,6 +87,8 @@ public static class HueRotationEffect
         return result;
     }
 
+    /// <summary>Apply the hue rotation effect to a 16-bit picture.</summary>
+    /// <param name="angleDegrees">Hue rotation angle in degrees.</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, float angleDegrees)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -160,6 +165,8 @@ public static class HueRotationEffect
         return result;
     }
 
+    /// <summary>Apply the hue rotation effect to an HDR picture.</summary>
+    /// <param name="angleDegrees">Hue rotation angle in degrees.</param>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture, float angleDegrees)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -250,16 +257,19 @@ public static class HueRotationEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the hue rotation effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> HueRotation(float angleDegrees)
             => context.SetAndReturn(Process(context.Result, angleDegrees));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the hue rotation effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> HueRotation(float angleDegrees)
             => context.SetAndReturn(Process(context.Result, angleDegrees));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the hue rotation effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> HueRotation(float angleDegrees)
             => context.SetAndReturn(Process(context.Result, angleDegrees));
     }

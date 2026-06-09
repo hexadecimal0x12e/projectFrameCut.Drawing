@@ -23,13 +23,12 @@
                            FontSize="12" TextColor="Gray" />
                 </VerticalStackLayout>
             </Border>
-
-            <!-- Text Content -->
+            
             <Border StrokeShape="RoundRectangle 8" Padding="12"
                     BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="文本内容" FontSize="16" FontAttributes="Bold" />
-                    <Entry x:Name="InputText" Text="Hello MAUI!"
+                    <Editor x:Name="InputText" Text="Hello MAUI!"
                            FontSize="14" Placeholder="输入渲染文本..." />
                 </VerticalStackLayout>
             </Border>
@@ -109,7 +108,7 @@
                     <Grid ColumnDefinitions="60,*,55" Margin="0,1">
                         <Label Text="B" VerticalOptions="Center" FontSize="13" TextColor="#2980B9" />
                         <Slider x:Name="SliderFillB" Grid.Column="1"
-                                Minimum="0" Maximum="255" Value="200"
+                                Minimum="0" Maximum="255" Value="0"
                                 ValueChanged="OnSliderChanged" />
                         <Label x:Name="LabelFillB" Grid.Column="2"
                                Text="200" VerticalOptions="Center"
@@ -247,6 +246,31 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Typesetting Engine -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="排版引擎" FontSize="16" FontAttributes="Bold" />
+                    <Picker x:Name="PickerEngine" FontSize="13"
+                            SelectedIndexChanged="OnEngineSelected">
+                        <Picker.Items>
+                            <x:String>Normal (横排)</x:String>
+                            <x:String>Vertical (竖排)</x:String>
+                        </Picker.Items>
+                    </Picker>
+
+                    <Grid ColumnDefinitions="75,*,55" Margin="0,2">
+                        <Label Text="流动方向" VerticalOptions="Center" FontSize="13" />
+                        <Picker x:Name="PickerFlowDirection" Grid.Column="1" FontSize="13">
+                            <Picker.Items>
+                                <x:String>从左到右</x:String>
+                                <x:String>从右到左</x:String>
+                            </Picker.Items>
+                        </Picker>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Output Settings -->
             <Border StrokeShape="RoundRectangle 8" Padding="12"
                     BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
@@ -264,6 +288,12 @@
                                Keyboard="Numeric" FontSize="13" />
                     </Grid>
 
+                    <HorizontalStackLayout>
+                        <Label Text="调试模式" VerticalOptions="Center" FontSize="13" />
+                        <Switch x:Name="SwitchDebug" Grid.Column="1"
+                                IsToggled="False" HorizontalOptions="Start"  />
+                    </HorizontalStackLayout>
+
                     <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto"
                           RowSpacing="8">
                         <Label Text="透明背景" VerticalOptions="Center" FontSize="13" />
@@ -279,11 +309,13 @@
                                 <x:String>无</x:String>
                                 <x:String>SSAA 2x</x:String>
                                 <x:String>SSAA 4x</x:String>
+                                <x:String>SSAA 8x</x:String>
                             </Picker.Items>
                         </Picker>
                     </Grid>
                 </VerticalStackLayout>
             </Border>
+            
 
             <!-- Render Button -->
             <Button x:Name="RenderButton"

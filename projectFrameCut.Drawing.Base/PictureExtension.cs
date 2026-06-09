@@ -19,11 +19,16 @@ using projectFrameCut.Drawing.Base.ReadWriteConvert;
 
 namespace projectFrameCut.Drawing.Base
 {
+    /// <summary>Extension methods for <see cref="IPicture"/> manipulation.</summary>
     public static class PictureExtensions
     {
+        /// <summary>Shared VFD encoder instance.</summary>
         public static readonly VfdPictureEncoder SharedVfdPictureEncoder = new VfdPictureEncoder();
+        /// <summary>Shared PNG encoder instance.</summary>
         public static readonly PngPictureEncoder SharedPngPictureEncoder = new PngPictureEncoder();
+        /// <summary>Shared VFD decoder instance.</summary>
         public static readonly VfdPictureDecoder SharedVfdPictureDecoder = new VfdPictureDecoder();
+        /// <summary>Shared PNG decoder instance.</summary>
         public static readonly PngPictureDecoder SharedPngPictureDecoder = new PngPictureDecoder();
 
         extension(IPicture source)
@@ -287,6 +292,7 @@ namespace projectFrameCut.Drawing.Base
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public (int Width, int Height) GetDimensions() => (source.Width, source.Height);
 
+            /// <summary>Append a custom step to the picture's process stack.</summary>
             public IPicture AppendProcessStack(string operationDisplayName, Type operatorType, Dictionary<string, object>? properties = null, TimeSpan? elapsed = null, string? tag = null)
             {
                 source.ProcessStack = source.ProcessStack.Append(new PictureProcessStack
@@ -303,11 +309,14 @@ namespace projectFrameCut.Drawing.Base
             }
         }
 
+        /// <summary>Load a picture from the given path and return its dimensions.</summary>
         public static (int Width, int Height) GetDimensions(string picPath) => new Picture8bpp(picPath).GetDimensions();
 
+        /// <summary>Convert XY coordinates to a flat array index. Returns false if out of bounds.</summary>
         public static bool TryFromXYToArrayIndex(this IPicture reference, int x, int y, out int index)
             => TryFromXYToArrayIndex(x, y, reference.Width, reference.Height, out index);
 
+        /// <summary>Convert XY coordinates to a flat array index. Returns false if out of bounds.</summary>
         public static bool TryFromXYToArrayIndex(int x, int y, int width, int height, out int index)
         {
             if (x < 0 || x >= width || y < 0 || y >= height)
@@ -319,6 +328,7 @@ namespace projectFrameCut.Drawing.Base
             return true;
         }
 
+        /// <summary>Get a single pixel from the picture at the specified coordinates.</summary>
         public static Pixel<T> GetPixel<T>(this IPicture<T> source, int x, int y)
         {
             if (!TryFromXYToArrayIndex(x, y, source.Width, source.Height, out int idx))
@@ -338,11 +348,16 @@ namespace projectFrameCut.Drawing.Base
             };
         }
 
+        /// <summary>Represents a single pixel with R, G, B channels and alpha.</summary>
         public struct Pixel<T>
         {
+            /// <summary>Red channel value.</summary>
             public T r;
+            /// <summary>Green channel value.</summary>
             public T g;
+            /// <summary>Blue channel value.</summary>
             public T b;
+            /// <summary>Alpha value (0.0 = transparent, 1.0 = opaque).</summary>
             public float a;
         }
     }

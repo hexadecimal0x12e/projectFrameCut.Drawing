@@ -14,6 +14,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="..\projectFrameCut.Drawing.Gallary\Resources\Fonts\OpenSans-Regular.ttf">
+      <Link>Fonts\OpenSans-Regular.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\projectFrameCut.Drawing.Gallary\Resources\Fonts\OpenSans-Semibold.ttf">
+      <Link>Fonts\OpenSans-Semibold.ttf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\projectFrameCut.Drawing.Base\projectFrameCut.Drawing.Base.csproj" />
     <ProjectReference Include="..\projectFrameCut.Drawing.Effect\projectFrameCut.Drawing.Effect.csproj" />
     <ProjectReference Include="..\projectFrameCut.Drawing.Processing\projectFrameCut.Drawing.Processing.csproj" />

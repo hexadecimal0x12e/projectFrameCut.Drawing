@@ -3,6 +3,7 @@ using projectFrameCut.Drawing.Base.Picture;
 
 namespace projectFrameCut.Drawing.Processing.Composing
 {
+    /// <summary>Defines operations for composing two pictures with a blend mode.</summary>
     public interface IPictureComposer
     {
         IPicture<ushort> Compose(IPicture<ushort> basePicture, IPicture<ushort> topPicture, BlendMode blendMode);
@@ -14,10 +15,13 @@ namespace projectFrameCut.Drawing.Processing.Composing
         IHDRPicture<ushort> Compose(IHDRPicture<ushort> basePicture, IPicture<ushort> topPicture, BlendMode blendMode, int topStartX, int topStartY, int targetWidth, int targetHeight);
     }
 
+    /// <summary>Provides static methods and extensions for picture composition.</summary>
     public static class PictureComposer
     {
+        /// <summary>Default composer implementation (CPU blend).</summary>
         public static IPictureComposer Default = new CPUBlendPictureComposer();
 
+        /// <summary>Compose two pictures using runtime type dispatch.</summary>
         public static IPicture Compose(IPicture basePicture, IPicture topPicture, BlendMode blendMode)
         {
             if (basePicture is IHDRPicture<ushort> hdrBase && topPicture is IPicture<ushort> ushortTop)
@@ -32,6 +36,7 @@ namespace projectFrameCut.Drawing.Processing.Composing
 
         extension<T>(ProcessableIPictureContext<T> ctx) where T : IPicture
         {
+            /// <summary>Apply composition in a processing pipeline.</summary>
             public ProcessableIPictureContext<T> Compose(IPicture topPicture, BlendMode blendMode)
             {
                 return ctx.SetAndReturn((T?)Compose(ctx.Result, topPicture, blendMode));

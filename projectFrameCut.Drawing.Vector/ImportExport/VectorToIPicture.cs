@@ -4,6 +4,7 @@ using projectFrameCut.Drawing.Vector;
 
 namespace projectFrameCut.Drawing.Vector.ImportExport
 {
+    /// <summary>Renders a <see cref="VectorPicture"/> to a raster <see cref="IPicture"/> using CPU scanline rendering.</summary>
     public class VectorToIPicture
     {
         private readonly ushort[] _r;
@@ -45,6 +46,13 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             }
         }
 
+        /// <summary>Convert a vector canvas to a raster picture.</summary>
+        /// <param name="canvas">The vector canvas to render.</param>
+        /// <param name="width">Output width in pixels.</param>
+        /// <param name="height">Output height in pixels.</param>
+        /// <param name="transparentBackground">Whether the background should be transparent.</param>
+        /// <param name="aaMode">Anti-aliasing mode (None, SSAA2x, SSAA4x, SSAA8x).</param>
+        /// <returns>A 16-bit picture with the rendered result.</returns>
         public static IPicture Convert(VectorPicture canvas, int width, int height,
             bool transparentBackground = false, AntiAliasMode aaMode = AntiAliasMode.None)
         {
@@ -53,9 +61,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
             int scaleFactor = aaMode switch
             {
-                AntiAliasMode.SSAA2x => 2,
-                AntiAliasMode.SSAA4x => 4,
-                _ => 1,
+                AntiAliasMode.None => 1,
+                _ => (int)aaMode
             };
 
             int renderWidth = width * scaleFactor;
@@ -943,10 +950,11 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             }
 
             AddEdges(outerPts);
+            Span<(float x, float y)> holeBuffer = stackalloc (float, float)[256];
             foreach (var hole in holes)
             {
                 Span<(float x, float y)> holePts = hole.Length <= 256
-                    ? stackalloc (float, float)[hole.Length]
+                    ? holeBuffer[..hole.Length]
                     : new (float, float)[hole.Length];
                 for (int i = 0; i < hole.Length; i++)
                     holePts[i] = (CX(hole[i].X, ox), CY(hole[i].Y, oy));

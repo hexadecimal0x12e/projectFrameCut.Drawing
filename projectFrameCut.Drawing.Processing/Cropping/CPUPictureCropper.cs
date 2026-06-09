@@ -4,6 +4,7 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Processing.Cropping
 {
+    /// <summary>CPU-based picture cropper implementing <see cref="IPictureCropper"/>.</summary>
     public class CPUPictureCropper : IPictureCropper
     {
         public IPicture<ushort> Crop(IPicture<ushort> source, int startX, int startY, int width, int height)

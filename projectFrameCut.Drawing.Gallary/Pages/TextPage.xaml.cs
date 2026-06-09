@@ -4,6 +4,7 @@ using projectFrameCut.Drawing.Gallary.Services;
 using projectFrameCut.Drawing.Text.Entry;
 using projectFrameCut.Drawing.Text.FontHelper;
 using projectFrameCut.Drawing.Text.Typology;
+using projectFrameCut.Drawing.Vector;
 using projectFrameCut.Drawing.Vector.ImportExport;
 using DrawTextAlignment = projectFrameCut.Drawing.Text.Entry.TextAlignment;
 using DrawTextDecoration = projectFrameCut.Drawing.Text.Entry.TextDecoration;
@@ -107,6 +108,11 @@ public partial class TextPage : ContentPage
         StrokeControls.IsEnabled = e.Value;
     }
 
+    private void OnEngineSelected(object? sender, EventArgs e)
+    {
+        // no immediate action needed
+    }
+
     private void OnAlignmentChanged(object? sender, EventArgs e)
     {
         // no immediate action needed
@@ -203,14 +209,40 @@ public partial class TextPage : ContentPage
             {
                 1 => AntiAliasMode.SSAA2x,
                 2 => AntiAliasMode.SSAA4x,
+                3 => AntiAliasMode.SSAA8x,
                 _ => AntiAliasMode.None,
             };
 
             var pngBytes = await Task.Run(() =>
             {
-                var renderEntry = entry with { FontName = selected.FamilyName };
-                var engine = new NormalTypesettingEngine { DebugMode = true };
-                var vectorCanvas = engine.Layout(renderEntry, selected);
+                VectorPicture vectorCanvas;
+                if (PickerEngine.SelectedIndex == 1)
+                {
+                    var verticalEngine = new VerticalTypesettingEngine();
+                    bool strokeEnabled = SwitchStroke.IsToggled;
+                    vectorCanvas = verticalEngine.Layout(
+                        entry.Text,
+                        selected,
+                        entry.FontSize,
+                        entry.X,
+                        entry.Y,
+                        entry.LineSpacing,
+                        keepNonCjkHorizontal: false,
+                        fillR: entry.FillR, fillG: entry.FillG, fillB: entry.FillB, fillA: entry.FillA,
+                        strokeR: strokeEnabled ? entry.StrokeR : (ushort)0,
+                        strokeG: strokeEnabled ? entry.StrokeG : (ushort)0,
+                        strokeB: strokeEnabled ? entry.StrokeB : (ushort)0,
+                        strokeThickness: strokeEnabled ? entry.StrokeThickness : 0f,
+                        flowDirection: entry.FlowDirection
+                    );
+                }
+                else
+                {
+                    var renderEntry = entry with { FontName = selected.FamilyName };
+                    var engine = new NormalTypesettingEngine { DebugMode = SwitchDebug.IsToggled };
+                    vectorCanvas = engine.Layout(renderEntry, selected);
+                }
+
                 var picture = VectorToIPicture.Convert(vectorCanvas, width, height, transparent, aaMode);
 
                 using var ms = new MemoryStream();
@@ -255,11 +287,17 @@ public partial class TextPage : ContentPage
             _ => DrawTextDecoration.None,
         };
 
+        var flowDirection = PickerFlowDirection.SelectedIndex switch
+        {
+            1 => TextFlowDirection.RightToLeft,
+            _ => TextFlowDirection.LeftToRight,
+        };
+
         bool strokeEnabled = SwitchStroke.IsToggled;
 
         return new TextEntry
         {
-            Text = InputText.Text ?? "Hello MAUI!",
+            Text = (InputText.Text ?? "Hello MAUI!").Replace("\r\n","\n").Replace('\r','\n'),
             FontName = _fonts[FontPicker.SelectedIndex].DisplayName,
             FontSize = (float)SliderFontSize.Value,
             X = (float)SliderX.Value,
@@ -279,6 +317,8 @@ public partial class TextPage : ContentPage
             LineSpacing = (float)SliderLineSpacing.Value,
             Alignment = alignment,
             Decoration = decoration,
+            FlowDirection = flowDirection,
         };
     }
+
 }

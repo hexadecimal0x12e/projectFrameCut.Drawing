@@ -39,6 +39,7 @@ namespace projectFrameCut.Drawing.Base
             return this;
         }
 
+        /// <summary>Implicitly extract the result picture from a processing context.</summary>
         public static implicit operator T(ProcessableIPictureContext<T> context) => context.Result;
 
     }
@@ -570,9 +571,12 @@ namespace projectFrameCut.Drawing.Base
         }
     }
 
+    /// <summary>Process stack that tracks separate top and base picture processing histories for composition operations.</summary>
     public class OverlayedPictureProcessStack : PictureProcessStack
     {
+        /// <summary>Process steps applied to the top picture.</summary>
         public required List<PictureProcessStack> TopSteps { get; set; }
+        /// <summary>Process steps applied to the base picture.</summary>
         public required List<PictureProcessStack> BaseSteps { get; set; }
     }
 }

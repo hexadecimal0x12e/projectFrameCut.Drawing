@@ -3,6 +3,7 @@ using projectFrameCut.Drawing.Base.Picture;
 
 namespace projectFrameCut.Drawing.Processing.Converting
 {
+    /// <summary>Defines operations for converting between HDR and SDR pictures.</summary>
     public interface IHDRPictureConverter
     {
         Picture16bpp ToSDR(IHDRPicture<ushort> source, HDRImageDegradeToSDRMode? degradeMode = null);
@@ -10,20 +11,25 @@ namespace projectFrameCut.Drawing.Processing.Converting
     }
 
 
+    /// <summary>Provides static methods and extensions for HDR/SDR conversion.</summary>
     public static class HDRPictureConverter
     {
+        /// <summary>Default HDR-to-SDR degrade mode for the assembly.</summary>
         public static HDRImageDegradeToSDRMode DefaultHDRImageDegradeToSDRMode { get; internal set; }
 
+        /// <summary>Default converter implementation.</summary>
         public static IHDRPictureConverter Default { get; set; } = new HDRPictureFormatConverter();
 
         extension(IHDRPicture<ushort> picture)
         {
+            /// <summary>Degrade an HDR picture to SDR.</summary>
             public Picture16bpp DegradeToSDR(HDRImageDegradeToSDRMode? degradeMode = null)
                 => Default.ToSDR(picture, degradeMode);
         }
 
         extension(IPicture<ushort> picture)
         {
+            /// <summary>Convert an SDR picture to HDR.</summary>
             public IHDRPicture<ushort> ToHDR(float maximumBrightness = 1000f, float defaultBrightness = 1f)
                 => Default.ToHDR(picture, maximumBrightness, defaultBrightness);
         }

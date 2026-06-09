@@ -4,8 +4,11 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Adjusts the contrast of a picture.</summary>
 public static class ContrastEffect
 {
+    /// <summary>Apply the contrast effect to an 8-bit picture.</summary>
+    /// <param name="factor">Contrast multiplier. 1.0 = original, greater than 1 = more contrast.</param>
     public static IPicture<byte> Process(IPicture<byte> picture, float factor)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -48,6 +51,8 @@ public static class ContrastEffect
         return result;
     }
 
+    /// <summary>Apply the contrast effect to a 16-bit picture.</summary>
+    /// <param name="factor">Contrast multiplier. 1.0 = original, greater than 1 = more contrast.</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, float factor)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -91,6 +96,8 @@ public static class ContrastEffect
         return result;
     }
 
+    /// <summary>Apply the contrast effect to an HDR picture.</summary>
+    /// <param name="factor">Contrast multiplier. 1.0 = original, greater than 1 = more contrast.</param>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture, float factor)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -142,16 +149,19 @@ public static class ContrastEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the contrast effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Contrast(float factor)
             => context.SetAndReturn(Process(context.Result, factor));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the contrast effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Contrast(float factor)
             => context.SetAndReturn(Process(context.Result, factor));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the contrast effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> Contrast(float factor)
             => context.SetAndReturn(Process(context.Result, factor));
     }

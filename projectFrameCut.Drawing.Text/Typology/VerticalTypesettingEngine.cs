@@ -1,3 +1,4 @@
+using projectFrameCut.Drawing.Text.Entry;
 using projectFrameCut.Drawing.Text.FontHelper;
 using projectFrameCut.Drawing.Text.FontHelper.Table;
 using projectFrameCut.Drawing.Vector;
@@ -6,10 +7,12 @@ namespace projectFrameCut.Drawing.Text.Typology;
 
 /// <summary>
 /// Lays out text as a vertical column, one CJK character per row.
+/// A newline character starts a new column; the <c>lineSpacing</c> parameter
+/// controls the gap between adjacent columns.
 /// Non‑CJK characters are either kept horizontal (<paramref name="keepNonCjkHorizontal"/>)
 /// or rotated 90° CW to stand upright in the column.
 /// </summary>
-public class VerticalTypesettingEngine
+public class VerticalTypesettingEngine : ITypesettingEngine
 {
     /// <summary>
     /// Additional fonts tried when the primary font maps a character to
@@ -19,6 +22,7 @@ public class VerticalTypesettingEngine
 
     /// <summary>
     /// Lay out <paramref name="text"/> as a vertical column of glyphs.
+    /// Newline characters advance to the next column (right for LTR, left for RTL).
     /// All coordinates are in normalized 0…1 canvas space.
     /// </summary>
     public VectorPicture Layout(
@@ -30,20 +34,32 @@ public class VerticalTypesettingEngine
         float lineSpacing = 1f,
         bool keepNonCjkHorizontal = false,
         ushort fillR = 0, ushort fillG = 0, ushort fillB = 0, float fillA = 1f,
-        ushort strokeR = 0, ushort strokeG = 0, ushort strokeB = 0, float strokeThickness = 0f)
+        ushort strokeR = 0, ushort strokeG = 0, ushort strokeB = 0, float strokeThickness = 0f,
+        TextFlowDirection flowDirection = TextFlowDirection.LeftToRight)
     {
         var result = new VectorPicture();
         if (string.IsNullOrEmpty(text) || primaryFont is null)
             return result;
 
-        // Normalised advance per character row
-        float charAdvance = normalizedFontSize * lineSpacing;
-        float cursorY = y;
+        // Vertical advance per character within a column (no extra spacing).
+        float charAdvance = normalizedFontSize;
+        // Horizontal distance between columns: lineSpacing controls the gap.
+        float columnWidth = normalizedFontSize * (1f + lineSpacing);
+        float cursorY = 0f;
+        // Column offset in uniform space so it scales with min(canvasW,canvasH),
+        // matching the glyph body scale from GlyphCanvasElement.UseUniformScale.
+        float columnOffset = 0f;
 
         foreach (char c in text)
         {
             if (c == '\n' || c == '\r')
+            {
+                cursorY = 0f;
+                columnOffset += flowDirection == TextFlowDirection.RightToLeft
+                    ? -columnWidth
+                    : columnWidth;
                 continue;
+            }
 
             bool isCjk = IsCjkCharacter(c);
             bool needsRotation = !isCjk && !keepNonCjkHorizontal;
@@ -55,7 +71,7 @@ public class VerticalTypesettingEngine
                 continue;
             }
 
-            Glyph? glyph = resolvedFont.GetGlyph(glyphIndex);
+            Glyph? glyph = resolvedFont.GetVariedGlyph(glyphIndex);
             if (glyph is null || glyph.IsEmpty)
             {
                 cursorY += charAdvance;
@@ -65,7 +81,9 @@ public class VerticalTypesettingEngine
             var element = new GlyphCanvasElement(glyph, resolvedFont.UnitsPerEm)
             {
                 FontSize = normalizedFontSize,
-                RelativeX = x,
+                BaseX = x,
+                BaseY = y,
+                RelativeX = columnOffset,
                 RelativeY = cursorY,
             };
 
@@ -88,6 +106,47 @@ public class VerticalTypesettingEngine
         }
 
         return result;
+    }
+
+    /// <inheritdoc/>
+    public VectorPicture Layout(TextEntry entry, FontFace font)
+    {
+        bool keepNonCjkHorizontal = entry.ExtraData.TryGetValue("keepNonCjkHorizontal", out var v) && v is true;
+        return Layout(
+            entry.Text,
+            font,
+            entry.FontSize,
+            entry.X,
+            entry.Y,
+            entry.LineSpacing,
+            keepNonCjkHorizontal,
+            entry.FillR, entry.FillG, entry.FillB, entry.FillA,
+            entry.StrokeR, entry.StrokeG, entry.StrokeB, entry.StrokeThickness,
+            entry.FlowDirection);
+    }
+
+    /// <inheritdoc/>
+    public (float width, float height) Measure(TextEntry entry, FontFace font)
+    {
+        if (string.IsNullOrEmpty(entry.Text))
+            return (0f, 0f);
+
+        float charAdvance = entry.FontSize;
+        float columnWidth = entry.FontSize * (1f + entry.LineSpacing);
+
+        var lines = entry.Text.Split('\n');
+        float maxHeight = 0f;
+
+        foreach (var line in lines)
+        {
+            var cleanLine = line.TrimEnd('\r');
+            float columnHeight = cleanLine.Length * charAdvance;
+            if (columnHeight > maxHeight)
+                maxHeight = columnHeight;
+        }
+
+        float totalWidth = lines.Length * columnWidth;
+        return (totalWidth, maxHeight);
     }
 
     // ──────────────────────────────────────────────

@@ -4,8 +4,14 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Crops a picture to a specified rectangle.</summary>
 public static class CropEffect
 {
+    /// <summary>Apply the crop effect to an 8-bit picture.</summary>
+    /// <param name="startX">X coordinate of the top-left corner in the source picture.</param>
+    /// <param name="startY">Y coordinate of the top-left corner in the source picture.</param>
+    /// <param name="width">Width of the crop rectangle.</param>
+    /// <param name="height">Height of the crop rectangle.</param>
     public static IPicture<byte> Process(IPicture<byte> picture, int startX, int startY, int width, int height)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -60,6 +66,11 @@ public static class CropEffect
         return result;
     }
 
+    /// <summary>Apply the crop effect to a 16-bit picture.</summary>
+    /// <param name="startX">X coordinate of the top-left corner in the source picture.</param>
+    /// <param name="startY">Y coordinate of the top-left corner in the source picture.</param>
+    /// <param name="width">Width of the crop rectangle.</param>
+    /// <param name="height">Height of the crop rectangle.</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, int startX, int startY, int width, int height)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -114,6 +125,11 @@ public static class CropEffect
         return result;
     }
 
+    /// <summary>Apply the crop effect using runtime type dispatch.</summary>
+    /// <param name="startX">X coordinate of the top-left corner in the source picture.</param>
+    /// <param name="startY">Y coordinate of the top-left corner in the source picture.</param>
+    /// <param name="width">Width of the crop rectangle.</param>
+    /// <param name="height">Height of the crop rectangle.</param>
     public static IPicture Process(IPicture source, int startX, int startY, int width, int height)
     {
         return source switch
@@ -126,11 +142,13 @@ public static class CropEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the crop effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Crop(int startX, int startY, int width, int height)
             => context.SetAndReturn(Process(context.Result, startX, startY, width, height));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the crop effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Crop(int startX, int startY, int width, int height)
             => context.SetAndReturn(Process(context.Result, startX, startY, width, height));
     }

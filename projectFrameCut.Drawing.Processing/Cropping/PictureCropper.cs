@@ -2,6 +2,7 @@ using projectFrameCut.Drawing.Base;
 
 namespace projectFrameCut.Drawing.Processing.Cropping
 {
+    /// <summary>Defines operations for cropping pictures.</summary>
     public interface IPictureCropper
     {
         IPicture<ushort> Crop(IPicture<ushort> source, int startX, int startY, int width, int height);
@@ -9,6 +10,7 @@ namespace projectFrameCut.Drawing.Processing.Cropping
         IHDRPicture<ushort> Crop(IHDRPicture<ushort> source, int startX, int startY, int width, int height);
     }
 
+    /// <summary>Provides static methods and extensions for picture cropping.</summary>
     public static class PictureCropper
     {
         /// <summary>
@@ -16,6 +18,7 @@ namespace projectFrameCut.Drawing.Processing.Cropping
         /// </summary>
         public static IPictureCropper Default = new CPUPictureCropper();
 
+        /// <summary>Apply the crop operation using runtime type dispatch.</summary>
         public static IPicture Crop(IPicture picture, int startX, int startY, int width, int height)
         {
             if (picture is IHDRPicture<ushort> hdrPicture)
@@ -30,6 +33,7 @@ namespace projectFrameCut.Drawing.Processing.Cropping
 
         extension<T>(ProcessableIPictureContext<T> ctx) where T : IPicture
         {
+            /// <summary>Apply cropping in a processing pipeline.</summary>
             public ProcessableIPictureContext<T> Crop(int startX, int startY, int width, int height)
             {
                 return ctx.SetAndReturn((T?)Crop(ctx.Result, startX, startY, width, height));

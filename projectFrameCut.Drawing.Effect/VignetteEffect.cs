@@ -4,8 +4,12 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Applies a vignette (darkened edges) effect to a picture.</summary>
 public static class VignetteEffect
 {
+    /// <summary>Apply the vignette effect to an 8-bit picture.</summary>
+    /// <param name="strength">Strength of the vignette (0.0 to 1.0).</param>
+    /// <param name="radius">Radius of the unaffected center (0.05 to 0.99).</param>
     public static IPicture<byte> Process(IPicture<byte> picture, float strength, float radius)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -103,6 +107,9 @@ public static class VignetteEffect
         return result;
     }
 
+    /// <summary>Apply the vignette effect to a 16-bit picture.</summary>
+    /// <param name="strength">Strength of the vignette (0.0 to 1.0).</param>
+    /// <param name="radius">Radius of the unaffected center (0.05 to 0.99).</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, float strength, float radius)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -200,6 +207,9 @@ public static class VignetteEffect
         return result;
     }
 
+    /// <summary>Apply the vignette effect to an HDR picture.</summary>
+    /// <param name="strength">Strength of the vignette (0.0 to 1.0).</param>
+    /// <param name="radius">Radius of the unaffected center (0.05 to 0.99).</param>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture, float strength, float radius)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -307,6 +317,9 @@ public static class VignetteEffect
         return result;
     }
 
+    /// <summary>Apply the vignette effect using runtime type dispatch.</summary>
+    /// <param name="strength">Strength of the vignette (0.0 to 1.0).</param>
+    /// <param name="radius">Radius of the unaffected center (0.05 to 0.99).</param>
     public static IPicture Process(IPicture source, float strength, float radius)
     {
         return source switch
@@ -320,16 +333,19 @@ public static class VignetteEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the vignette effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Vignette(float strength, float radius)
             => context.SetAndReturn(Process(context.Result, strength, radius));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the vignette effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Vignette(float strength, float radius)
             => context.SetAndReturn(Process(context.Result, strength, radius));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the vignette effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> Vignette(float strength, float radius)
             => context.SetAndReturn(Process(context.Result, strength, radius));
     }

@@ -4,8 +4,10 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Inverts the color channels of a picture.</summary>
 public static class InvertEffect
 {
+    /// <summary>Apply the invert effect to an 8-bit picture.</summary>
     public static IPicture<byte> Process(IPicture<byte> picture)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -47,6 +49,7 @@ public static class InvertEffect
         return result;
     }
 
+    /// <summary>Apply the invert effect to a 16-bit picture.</summary>
     public static IPicture<ushort> Process(IPicture<ushort> picture)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -88,6 +91,7 @@ public static class InvertEffect
         return result;
     }
 
+    /// <summary>Apply the invert effect to an HDR picture.</summary>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -137,16 +141,19 @@ public static class InvertEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the invert effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Invert()
             => context.SetAndReturn(Process(context.Result));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the invert effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Invert()
             => context.SetAndReturn(Process(context.Result));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the invert effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> Invert()
             => context.SetAndReturn(Process(context.Result));
     }

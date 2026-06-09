@@ -22,6 +22,33 @@ public readonly record struct TargetLanguage(ushort PlatformId, ushort LanguageI
 
     public override string ToString() => DisplayName;
 
+    /// <summary>
+    /// Converts this language identifier to a BCP-47 language tag,
+    /// e.g. "en-US", "zh-CN", "ja-JP".
+    /// </summary>
+    public string ToBcp47Tag() => PlatformId switch
+    {
+        3 => GetWindowsBcp47Tag(LanguageId),
+        1 => GetMacBcp47Tag(LanguageId),
+        0 => "und",
+        _ => "und",
+    };
+
+    private static string GetWindowsBcp47Tag(ushort langId)
+    {
+        try
+        {
+            return CultureInfo.GetCultureInfo(langId).Name;
+        }
+        catch
+        {
+            return "und";
+        }
+    }
+
+    private static string GetMacBcp47Tag(ushort langId) =>
+        MacBcp47.TryGetValue(langId, out var tag) ? tag : "und";
+
     private static string GetWindowsLanguageName(ushort langId)
     {
         try
@@ -43,6 +70,62 @@ public readonly record struct TargetLanguage(ushort PlatformId, ushort LanguageI
         1 => "Macintosh",
         0 => "Unicode",
         _ => $"Unknown platform {PlatformId}"
+    };
+
+    private static readonly Dictionary<ushort, string> MacBcp47 = new()
+    {
+        { 0, "en" },
+        { 1, "fr" },
+        { 2, "de" },
+        { 3, "it" },
+        { 4, "nl" },
+        { 5, "sv" },
+        { 6, "es" },
+        { 7, "da" },
+        { 8, "pt" },
+        { 9, "no" },
+        { 10, "he" },
+        { 11, "ja" },
+        { 12, "ar" },
+        { 13, "fi" },
+        { 14, "el" },
+        { 15, "is" },
+        { 17, "tr" },
+        { 18, "hr" },
+        { 19, "zh-Hant" },
+        { 20, "ur" },
+        { 21, "hi" },
+        { 22, "th" },
+        { 23, "ko" },
+        { 24, "lt" },
+        { 25, "pl" },
+        { 26, "hu" },
+        { 27, "et" },
+        { 28, "lv" },
+        { 32, "ru" },
+        { 33, "zh-Hans" },
+        { 34, "nl-BE" },
+        { 37, "ro" },
+        { 38, "cs" },
+        { 39, "sk" },
+        { 40, "sl" },
+        { 41, "yi" },
+        { 42, "sr" },
+        { 43, "mk" },
+        { 44, "bg" },
+        { 45, "uk" },
+        { 46, "be" },
+        { 48, "kk" },
+        { 52, "hy" },
+        { 53, "ka" },
+        { 54, "ro-MD" },
+        { 58, "mn" },
+        { 78, "my" },
+        { 79, "km" },
+        { 80, "lo" },
+        { 81, "vi" },
+        { 82, "id" },
+        { 90, "sw" },
     };
 
     private static readonly Dictionary<ushort, string> WindowsLanguages = new()

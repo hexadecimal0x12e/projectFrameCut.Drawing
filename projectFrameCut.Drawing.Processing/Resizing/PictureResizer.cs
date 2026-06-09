@@ -3,6 +3,7 @@ using projectFrameCut.Drawing.Base.Picture;
 
 namespace projectFrameCut.Drawing.Processing.Resizing
 {
+    /// <summary>Defines operations for resizing pictures.</summary>
     public interface IPictureResizer
     {
         IPicture<ushort> Resize(IPicture<ushort> source, int targetWidth, int targetHeight, bool preserveAspect);
@@ -10,6 +11,7 @@ namespace projectFrameCut.Drawing.Processing.Resizing
         IHDRPicture<ushort> Resize(IHDRPicture<ushort> source, int targetWidth, int targetHeight, bool preserveAspect);
     }
 
+    /// <summary>Provides static methods and extensions for picture resizing.</summary>
     public static class PictureResizer
     {
         /// <summary>

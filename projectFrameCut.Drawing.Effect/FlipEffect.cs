@@ -4,8 +4,12 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Flips a picture horizontally and/or vertically.</summary>
 public static class FlipEffect
 {
+    /// <summary>Apply the flip effect to an 8-bit picture.</summary>
+    /// <param name="horizontal">Whether to flip horizontally.</param>
+    /// <param name="vertical">Whether to flip vertically.</param>
     public static IPicture<byte> Process(IPicture<byte> picture, bool horizontal, bool vertical)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -96,6 +100,9 @@ public static class FlipEffect
         return result;
     }
 
+    /// <summary>Apply the flip effect to a 16-bit picture.</summary>
+    /// <param name="horizontal">Whether to flip horizontally.</param>
+    /// <param name="vertical">Whether to flip vertically.</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, bool horizontal, bool vertical)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -186,6 +193,9 @@ public static class FlipEffect
         return result;
     }
 
+    /// <summary>Apply the flip effect to an HDR picture.</summary>
+    /// <param name="horizontal">Whether to flip horizontally.</param>
+    /// <param name="vertical">Whether to flip vertically.</param>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture, bool horizontal, bool vertical)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -283,6 +293,9 @@ public static class FlipEffect
         return result;
     }
 
+    /// <summary>Apply the flip effect using runtime type dispatch.</summary>
+    /// <param name="horizontal">Whether to flip horizontally.</param>
+    /// <param name="vertical">Whether to flip vertically.</param>
     public static IPicture Process(IPicture source, bool horizontal, bool vertical)
     {
         return source switch
@@ -296,16 +309,19 @@ public static class FlipEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the flip effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Flip(bool horizontal, bool vertical)
             => context.SetAndReturn(Process(context.Result, horizontal, vertical));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the flip effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Flip(bool horizontal, bool vertical)
             => context.SetAndReturn(Process(context.Result, horizontal, vertical));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the flip effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> Flip(bool horizontal, bool vertical)
             => context.SetAndReturn(Process(context.Result, horizontal, vertical));
     }

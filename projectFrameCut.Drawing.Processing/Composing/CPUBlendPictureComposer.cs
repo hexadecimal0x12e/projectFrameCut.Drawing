@@ -4,6 +4,7 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Processing.Composing
 {
+    /// <summary>CPU-based blend picture composer implementing <see cref="IPictureComposer"/>.</summary>
     public class CPUBlendPictureComposer : IPictureComposer
     {
         private const float Epsilon = 1e-6f;

@@ -4,8 +4,14 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Places a picture onto a larger canvas at the specified position.</summary>
 public static class PlaceEffect
 {
+    /// <summary>Apply the place effect to an 8-bit picture.</summary>
+    /// <param name="startX">X offset of the picture on the target canvas.</param>
+    /// <param name="startY">Y offset of the picture on the target canvas.</param>
+    /// <param name="targetWidth">Width of the target canvas.</param>
+    /// <param name="targetHeight">Height of the target canvas.</param>
     public static IPicture<byte> Process(IPicture<byte> picture, int startX, int startY, int targetWidth, int targetHeight)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -69,6 +75,11 @@ public static class PlaceEffect
         return result;
     }
 
+    /// <summary>Apply the place effect to a 16-bit picture.</summary>
+    /// <param name="startX">X offset of the picture on the target canvas.</param>
+    /// <param name="startY">Y offset of the picture on the target canvas.</param>
+    /// <param name="targetWidth">Width of the target canvas.</param>
+    /// <param name="targetHeight">Height of the target canvas.</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, int startX, int startY, int targetWidth, int targetHeight)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -132,6 +143,11 @@ public static class PlaceEffect
         return result;
     }
 
+    /// <summary>Apply the place effect using runtime type dispatch.</summary>
+    /// <param name="startX">X offset of the picture on the target canvas.</param>
+    /// <param name="startY">Y offset of the picture on the target canvas.</param>
+    /// <param name="targetWidth">Width of the target canvas.</param>
+    /// <param name="targetHeight">Height of the target canvas.</param>
     public static IPicture Process(IPicture source, int startX, int startY, int targetWidth, int targetHeight)
     {
         return source switch
@@ -144,11 +160,13 @@ public static class PlaceEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the place effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Place(int startX, int startY, int targetWidth, int targetHeight)
             => context.SetAndReturn(Process(context.Result, startX, startY, targetWidth, targetHeight));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the place effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Place(int startX, int startY, int targetWidth, int targetHeight)
             => context.SetAndReturn(Process(context.Result, startX, startY, targetWidth, targetHeight));
     }

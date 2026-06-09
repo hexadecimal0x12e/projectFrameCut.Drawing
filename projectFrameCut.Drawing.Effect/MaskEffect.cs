@@ -4,8 +4,11 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Applies a binary mask to a picture, keeping only pixels where the mask is true.</summary>
 public static class MaskEffect
 {
+    /// <summary>Apply the mask effect to an 8-bit picture.</summary>
+    /// <param name="maskPic">The bit mask. Pixels where the mask is true are kept; others become transparent.</param>
     public static IPicture<byte> Process(IPicture<byte> frame, BitMaskPicture maskPic)
     {
         ArgumentNullException.ThrowIfNull(frame);
@@ -55,6 +58,8 @@ public static class MaskEffect
         return result;
     }
 
+    /// <summary>Apply the mask effect to a 16-bit picture.</summary>
+    /// <param name="maskPic">The bit mask.</param>
     public static IPicture<ushort> Process(IPicture<ushort> frame, BitMaskPicture maskPic)
     {
         ArgumentNullException.ThrowIfNull(frame);
@@ -117,6 +122,8 @@ public static class MaskEffect
         return maskIndex >= 0 && maskIndex < maskPic.r.Length ? maskPic.r[maskIndex] : true;
     }
 
+    /// <summary>Apply the mask effect using runtime type dispatch.</summary>
+    /// <param name="maskPic">The bit mask.</param>
     public static IPicture Process(IPicture frame, BitMaskPicture maskPic)
     {
         return frame switch
@@ -129,11 +136,13 @@ public static class MaskEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the mask effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Mask(BitMaskPicture maskPic)
             => context.SetAndReturn(Process(context.Result, maskPic));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the mask effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Mask(BitMaskPicture maskPic)
             => context.SetAndReturn(Process(context.Result, maskPic));
     }

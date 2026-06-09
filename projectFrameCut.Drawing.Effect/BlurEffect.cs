@@ -4,8 +4,11 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Applies a box blur to a picture.</summary>
 public static class BlurEffect
 {
+    /// <summary>Apply the blur effect to an 8-bit picture.</summary>
+    /// <param name="sigma">Blur sigma. Radius is derived as ceil(sigma). A value of 0 returns a clone.</param>
     public static IPicture<byte> Process(IPicture<byte> picture, float sigma)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -88,6 +91,8 @@ public static class BlurEffect
         return result;
     }
 
+    /// <summary>Apply the blur effect to a 16-bit picture.</summary>
+    /// <param name="sigma">Blur sigma. A value of 0 returns a clone.</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, float sigma)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -171,6 +176,8 @@ public static class BlurEffect
         return result;
     }
 
+    /// <summary>Apply the blur effect to an HDR picture.</summary>
+    /// <param name="sigma">Blur sigma. A value of 0 returns a clone.</param>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture, float sigma)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -264,6 +271,8 @@ public static class BlurEffect
         return result;
     }
 
+    /// <summary>Apply the blur effect using runtime type dispatch.</summary>
+    /// <param name="sigma">Blur sigma. A value of 0 returns a clone.</param>
     public static IPicture Process(IPicture source, float sigma)
     {
         return source switch
@@ -326,16 +335,19 @@ public static class BlurEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the blur effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Blur(float sigma)
             => context.SetAndReturn(Process(context.Result, sigma));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the blur effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Blur(float sigma)
             => context.SetAndReturn(Process(context.Result, sigma));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the blur effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> Blur(float sigma)
             => context.SetAndReturn(Process(context.Result, sigma));
     }

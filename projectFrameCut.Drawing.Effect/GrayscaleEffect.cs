@@ -4,12 +4,14 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Converts a picture to grayscale using luminance weights (0.2126R + 0.7152G + 0.0722B).</summary>
 public static class GrayscaleEffect
 {
     private const float RWeight = 0.2126f;
     private const float GWeight = 0.7152f;
     private const float BWeight = 0.0722f;
 
+    /// <summary>Apply the grayscale effect to an 8-bit picture.</summary>
     public static IPicture<byte> Process(IPicture<byte> picture)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -54,6 +56,7 @@ public static class GrayscaleEffect
         return result;
     }
 
+    /// <summary>Apply the grayscale effect to a 16-bit picture.</summary>
     public static IPicture<ushort> Process(IPicture<ushort> picture)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -98,6 +101,7 @@ public static class GrayscaleEffect
         return result;
     }
 
+    /// <summary>Apply the grayscale effect to an HDR picture.</summary>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -150,16 +154,19 @@ public static class GrayscaleEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the grayscale effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Grayscale()
             => context.SetAndReturn(Process(context.Result));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the grayscale effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Grayscale()
             => context.SetAndReturn(Process(context.Result));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the grayscale effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> Grayscale()
             => context.SetAndReturn(Process(context.Result));
     }

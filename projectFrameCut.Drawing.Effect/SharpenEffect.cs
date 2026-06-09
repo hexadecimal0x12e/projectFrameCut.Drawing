@@ -4,8 +4,11 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Sharpens a picture using an unsharp mask.</summary>
 public static class SharpenEffect
 {
+    /// <summary>Apply the sharpen effect to an 8-bit picture.</summary>
+    /// <param name="amount">Sharpening amount (0.0 to 5.0). 0 = no effect, higher = stronger sharpening.</param>
     public static IPicture<byte> Process(IPicture<byte> picture, float amount)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -96,6 +99,8 @@ public static class SharpenEffect
         return result;
     }
 
+    /// <summary>Apply the sharpen effect to a 16-bit picture.</summary>
+    /// <param name="amount">Sharpening amount (0.0 to 5.0).</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, float amount)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -187,6 +192,8 @@ public static class SharpenEffect
         return result;
     }
 
+    /// <summary>Apply the sharpen effect to an HDR picture.</summary>
+    /// <param name="amount">Sharpening amount (0.0 to 5.0).</param>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture, float amount)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -288,6 +295,8 @@ public static class SharpenEffect
         return result;
     }
 
+    /// <summary>Apply the sharpen effect using runtime type dispatch.</summary>
+    /// <param name="amount">Sharpening amount (0.0 to 5.0).</param>
     public static IPicture Process(IPicture source, float amount)
     {
         return source switch
@@ -301,16 +310,19 @@ public static class SharpenEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the sharpen effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Sharpen(float amount)
             => context.SetAndReturn(Process(context.Result, amount));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the sharpen effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Sharpen(float amount)
             => context.SetAndReturn(Process(context.Result, amount));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the sharpen effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> Sharpen(float amount)
             => context.SetAndReturn(Process(context.Result, amount));
     }

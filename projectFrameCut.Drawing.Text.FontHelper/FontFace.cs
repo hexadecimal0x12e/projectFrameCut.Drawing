@@ -1,8 +1,11 @@
 using projectFrameCut.Drawing.Text.FontHelper.Reader;
 using projectFrameCut.Drawing.Text.FontHelper.Table;
+using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Text.FontHelper;
 
+/// <summary>Represents a loaded TrueType/OpenType/CFF font face with glyph access and variable font support.</summary>
+[DebuggerDisplay("{DisplayName} ({UniqueName})")]
 public sealed class FontFace : IDisposable
 {
     private readonly SfntReader _sfnt;
@@ -79,23 +82,29 @@ public sealed class FontFace : IDisposable
             : null;
     }
 
+    /// <summary>Load a font face from a file path.</summary>
     public static FontFace Load(string path) =>
         new(SfntReader.Load(path));
 
+    /// <summary>Load a font face from raw font data.</summary>
     public static FontFace Load(byte[] data) =>
         new(SfntReader.Load(data));
 
     // ── TrueType Collection (.ttc) support ──
 
+    /// <summary>Open a TrueType Collection (.ttc) from a file path.</summary>
     public static FontCollection OpenTtcCollection(string path) =>
         FontCollection.Load(path);
 
+    /// <summary>Open a TrueType Collection (.ttc) from raw data.</summary>
     public static FontCollection OpenTtcCollection(byte[] data) =>
         FontCollection.Load(data);
 
+    /// <summary>Auto-detect and load fonts from a file path (supports .ttf, .otf, .ttc).</summary>
     public static FontFace[] AutoLoad(string path)
         => AutoLoad(File.ReadAllBytes(path));
 
+    /// <summary>Auto-detect and load fonts from raw data (supports TTF, OTF, TTC).</summary>
     public static FontFace[] AutoLoad(byte[] data)
     {
         List<FontFace> fonts = new();
@@ -128,6 +137,7 @@ public sealed class FontFace : IDisposable
 
     // ── Font metadata ──
 
+    /// <summary>The font family name (e.g., "Arial").</summary>
     public string FamilyName
     {
         get
@@ -141,6 +151,10 @@ public sealed class FontFace : IDisposable
         }
     }
 
+    /// <summary>A unique identifier for this font (Name ID 3), e.g. "Monotype:Arial Bold:1990".</summary>
+    public string? UniqueName => _name.GetName(3);
+
+    /// <summary>The font subfamily name (e.g., "Regular", "Bold").</summary>
     public string SubfamilyName
     {
         get
@@ -183,9 +197,32 @@ public sealed class FontFace : IDisposable
         }
     }
 
+    /// <summary>
+    /// The BCP-47 language tag of the font's primary target language.
+    /// Follows the same non-English preference logic as <see cref="DisplayName"/>.
+    /// Returns "und" (undetermined) when no specific language can be determined.
+    /// </summary>
+    public string PrimaryLanguageTag
+    {
+        get
+        {
+            foreach (var (lang, _) in _localizedNames)
+            {
+                if (lang.PlatformId == 3 && lang.LanguageId == 0x0409) continue;
+                if (lang.PlatformId == 1 && lang.LanguageId == 0) continue;
+                return lang.ToBcp47Tag();
+            }
+            return "und";
+        }
+    }
+
+    /// <summary>Number of font units per EM square.</summary>
     public ushort UnitsPerEm => _head.UnitsPerEm;
+    /// <summary>Total number of glyphs in the font.</summary>
     public int GlyphCount => _maxp.NumGlyphs;
+    /// <summary>Whether the font is italic.</summary>
     public bool IsItalic => _os2.IsItalic || _head.IsItalic;
+    /// <summary>Font weight class (100 = Thin, 400 = Regular, 700 = Bold).</summary>
     public ushort WeightClass => _os2.WeightClass;
 
     // ── Variable font support ──
@@ -248,9 +285,19 @@ public sealed class FontFace : IDisposable
 
     // ── Glyph access ──
 
+    /// <summary>Get the glyph index for a Unicode codepoint.</summary>
     public ushort GetGlyphIndex(char unicodeCodepoint) =>
         _cmap.GetGlyphIndex((uint)unicodeCodepoint);
 
+    /// <summary>Checks whether the font can actually display the specified character
+    /// (i.e., it maps to a real glyph rather than the .notdef glyph).</summary>
+    public bool CanDisplayTheChar(char ch)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _cmap.GetGlyphIndex(ch) != 0;
+    }
+
+    /// <summary>Parse and return the glyph at the given index.</summary>
     public Glyph? GetGlyph(ushort glyphIndex)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -328,11 +375,13 @@ public sealed class FontFace : IDisposable
         return glyph;
     }
 
+    /// <summary>Get the advance width for a glyph.</summary>
     public ushort GetAdvanceWidth(ushort glyphIndex) =>
         _hmtx.GetAdvanceWidth(glyphIndex);
 
     // ── IDisposable ──
 
+    /// <summary>Release all resources held by this font face.</summary>
     public void Dispose()
     {
         if (!_disposed)

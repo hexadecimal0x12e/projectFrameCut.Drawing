@@ -312,7 +312,7 @@ internal sealed class CffTable
                         if (_stack.Count > 0 && (_stack.Count % 2 == 1))
                             _stack.RemoveAt(0);
                     }
-                    _hintCount += _stack.Count;
+                    _hintCount += _stack.Count / 2;
                     _stack.Clear();
                     // Skip the mask bytes: (hintCount + 7) / 8 bytes
                     int maskBytes = (_hintCount + 7) / 8;
@@ -357,9 +357,11 @@ internal sealed class CffTable
             switch (op)
             {
                 case 1: // hstem
-                    _widthParsed = true; _hintCount += _stack.Count; _stack.Clear(); break;
+                    if (!_widthParsed) { _widthParsed = true; if (_stack.Count % 2 == 1) _stack.RemoveAt(0); }
+                    _hintCount += _stack.Count / 2; _stack.Clear(); break;
                 case 3: // vstem
-                    _widthParsed = true; _hintCount += _stack.Count; _stack.Clear(); break;
+                    if (!_widthParsed) { _widthParsed = true; if (_stack.Count % 2 == 1) _stack.RemoveAt(0); }
+                    _hintCount += _stack.Count / 2; _stack.Clear(); break;
 
                 case 4: // vmoveto
                     CheckWidth(1);
@@ -439,13 +441,18 @@ internal sealed class CffTable
                     break;
 
                 case 22: // vstemhm
-                    _widthParsed = true; _hintCount += _stack.Count; _stack.Clear();
+                    if (!_widthParsed) { _widthParsed = true; if (_stack.Count % 2 == 1) _stack.RemoveAt(0); }
+                    _hintCount += _stack.Count / 2; _stack.Clear();
                     break;
 
                 case 23: // rcurveline
                     {
                         int cnt = _stack.Count;
-                        if (cnt > 0 && !_widthParsed && (cnt - 1) % 6 == 1)
+                        // rcurveline: 6n+2 operands (no width) or 6n+3 (with width).
+                        // The previous check "(cnt - 1) % 6 == 1" was inverted and matched
+                        // the *no-width* case, wrongly consuming dx1 of the first curve as
+                        // if it were a width and shifting the whole contour.
+                        if (cnt > 0 && !_widthParsed && cnt % 6 == 3)
                         { _widthParsed = true; _stack.RemoveAt(0); cnt--; }
                         int nCurves = cnt / 6;
                         EnsureContour();
@@ -613,7 +620,8 @@ internal sealed class CffTable
                 case 0: break; // dotsection
                 case 1:
                 case 2: // vstem3 / hstem3
-                    _widthParsed = true; _hintCount += _stack.Count; _stack.Clear(); break;
+                    if (!_widthParsed) { _widthParsed = true; if (_stack.Count % 2 == 1) _stack.RemoveAt(0); }
+                    _hintCount += _stack.Count / 2; _stack.Clear(); break;
 
                 case 4: // flex
                     {
@@ -711,7 +719,15 @@ internal sealed class CffTable
 
         private void EnsureContour()
         {
-            if (_currentContour == null) { _currentContour = new List<GlyphPoint>(); _contours.Add(_currentContour); }
+            // The first draw operation after a moveto must implicitly start
+            // its contour at the moveto's destination. Without seeding the
+            // contour with the current point, every CFF contour would lose
+            // its first vertex and render displaced / fragmented.
+            if (_currentContour == null)
+            {
+                _currentContour = new List<GlyphPoint> { MakePoint(_x, _y, true) };
+                _contours.Add(_currentContour);
+            }
         }
 
         private void CloseContour()
@@ -742,10 +758,30 @@ internal sealed class CffTable
             List<GlyphPoint> contour, int depth)
         {
             double dx = x3 - x0, dy = y3 - y0, len2 = dx * dx + dy * dy;
-            if (len2 < 0.5 || depth > 10) return;
+
+            // Depth limit: force-add endpoint to avoid gaps in the contour.
+            if (depth > 10)
+            {
+                contour.Add(MakePoint(x3, y3, true));
+                return;
+            }
+
+            // Near-zero length: treat as a point.
+            if (len2 < 0.5)
+            {
+                contour.Add(MakePoint(x3, y3, true));
+                return;
+            }
+
             double d = Math.Abs((x1 - x0) * dy - (y1 - y0) * dx)
                      + Math.Abs((x2 - x0) * dy - (y2 - y0) * dx);
-            if (d * d < len2 * 0.5) return;
+
+            // Flat enough: approximate with a straight line segment to the endpoint.
+            if (d * d < len2 * 0.5)
+            {
+                contour.Add(MakePoint(x3, y3, true));
+                return;
+            }
 
             double mx01 = (x0 + x1) * 0.5, my01 = (y0 + y1) * 0.5;
             double mx12 = (x1 + x2) * 0.5, my12 = (y1 + y2) * 0.5;
@@ -754,8 +790,10 @@ internal sealed class CffTable
             double mx123 = (mx12 + mx23) * 0.5, my123 = (my12 + my23) * 0.5;
             double mx0123 = (mx012 + mx123) * 0.5, my0123 = (my012 + my123) * 0.5;
 
+            // Left half terminates by adding mx0123 as its endpoint.
+            // Right half terminates by adding (x3,y3) as its endpoint.
+            // No manual midpoint insertion needed — avoids duplicate vertices.
             FlattenCubicRecursive(x0, y0, mx01, my01, mx012, my012, mx0123, my0123, contour, depth + 1);
-            contour.Add(MakePoint(mx0123, my0123, true));
             FlattenCubicRecursive(mx0123, my0123, mx123, my123, mx23, my23, x3, y3, contour, depth + 1);
         }
 
@@ -778,7 +816,32 @@ internal sealed class CffTable
                 else if (b0 >= 247 && b0 <= 250) { if (ip >= subrData.Length) break; _stack.Add((b0 - 247) * 256 + subrData[ip++] + 108); }
                 else if (b0 >= 251 && b0 <= 254) { if (ip >= subrData.Length) break; _stack.Add(-(b0 - 251) * 256 - subrData[ip++] - 108); }
                 else if (b0 == 10) { if (_stack.Count == 0) break; int sn = PopIntAt(_stack.Count - 1); int si = sn + _localBias; if (si >= 0 && si < _localSubrs.Length && _subrCallCount < MaxSubrCalls) { _subrDepth++; _subrCallCount++; if (_subrDepth <= MaxSubrDepth) InterpSubr(_localSubrs[si]); _subrDepth--; } }
-                else if (b0 is >= 0 and <= 31) { if (b0 != 10 && b0 != 11 && b0 != 14) ProcessOp(b0); }
+                else if (b0 == 12)
+                {
+                    // Escape prefix: subroutines may legally contain flex/hflex/hflex1/flex1
+                    // (escape 4/5/6) and hstem3/vstem3 (escape 1/2). Without this branch those
+                    // operators would fall through to ProcessOp (which has no case 12), and the
+                    // escape parameter byte would be pushed onto the operand stack as a number,
+                    // desyncing all subsequent interpretation and producing garbled glyphs.
+                    if (ip >= subrData.Length) break;
+                    int b1 = subrData[ip++];
+                    ProcessEscapeOp(b1);
+                }
+                else if (b0 == 14) { CloseContour(); _done = true; return; }
+                else if (b0 == 18 || b0 == 19)
+                {
+                    if (!_widthParsed)
+                    {
+                        _widthParsed = true;
+                        if (_stack.Count > 0 && (_stack.Count % 2 == 1))
+                            _stack.RemoveAt(0);
+                    }
+                    _hintCount += _stack.Count / 2;
+                    _stack.Clear();
+                    int maskBytes = (_hintCount + 7) / 8;
+                    ip = Math.Min(ip + maskBytes, subrData.Length);
+                }
+                else if (b0 is >= 0 and <= 31) ProcessOp(b0);
                 else _stack.Add(b0 - 139);
             }
         }

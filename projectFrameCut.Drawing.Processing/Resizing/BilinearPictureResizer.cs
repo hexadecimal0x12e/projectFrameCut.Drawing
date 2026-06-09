@@ -4,6 +4,7 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Processing.Resizing
 {
+    /// <summary>CPU-based bilinear picture resizer implementing <see cref="IPictureResizer"/>.</summary>
     public class BilinearPictureResizer : IPictureResizer
     {
         public IPicture<ushort> Resize(IPicture<ushort> source, int targetWidth, int targetHeight, bool preserveAspect)

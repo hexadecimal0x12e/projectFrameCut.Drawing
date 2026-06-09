@@ -4,8 +4,11 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Adjusts the brightness of a picture.</summary>
 public static class BrightnessEffect
 {
+    /// <summary>Apply the brightness effect to an 8-bit picture.</summary>
+    /// <param name="factor">Brightness adjustment. Positive values brighten, negative values darken.</param>
     public static IPicture<byte> Process(IPicture<byte> picture, float factor)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -61,6 +64,8 @@ public static class BrightnessEffect
         return result;
     }
 
+    /// <summary>Apply the brightness effect to a 16-bit picture.</summary>
+    /// <param name="factor">Brightness adjustment. Positive values brighten, negative values darken.</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, float factor)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -117,6 +122,8 @@ public static class BrightnessEffect
         return result;
     }
 
+    /// <summary>Apply the brightness effect to an HDR picture.</summary>
+    /// <param name="factor">Brightness adjustment. Positive values brighten, negative values darken.</param>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture, float factor)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -194,16 +201,19 @@ public static class BrightnessEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the brightness effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Brightness(float factor)
             => context.SetAndReturn(Process(context.Result, factor));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the brightness effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Brightness(float factor)
             => context.SetAndReturn(Process(context.Result, factor));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the brightness effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> Brightness(float factor)
             => context.SetAndReturn(Process(context.Result, factor));
     }

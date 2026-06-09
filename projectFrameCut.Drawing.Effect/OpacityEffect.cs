@@ -4,8 +4,11 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Adjusts the opacity (alpha channel) of a picture.</summary>
 public static class OpacityEffect
 {
+    /// <summary>Apply the opacity effect to an 8-bit picture.</summary>
+    /// <param name="opacity">Opacity value (0.0 = fully transparent, 1.0 = fully opaque).</param>
     public static IPicture<byte> Process(IPicture<byte> picture, float opacity)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -51,6 +54,8 @@ public static class OpacityEffect
         return result;
     }
 
+    /// <summary>Apply the opacity effect to a 16-bit picture.</summary>
+    /// <param name="opacity">Opacity value (0.0 = fully transparent, 1.0 = fully opaque).</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, float opacity)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -96,6 +101,8 @@ public static class OpacityEffect
         return result;
     }
 
+    /// <summary>Apply the opacity effect to an HDR picture.</summary>
+    /// <param name="opacity">Opacity value (0.0 = fully transparent, 1.0 = fully opaque).</param>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture, float opacity)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -147,6 +154,8 @@ public static class OpacityEffect
         return result;
     }
 
+    /// <summary>Apply the opacity effect using runtime type dispatch.</summary>
+    /// <param name="opacity">Opacity value (0.0 = fully transparent, 1.0 = fully opaque).</param>
     public static IPicture Process(IPicture source, float opacity)
     {
         return source switch
@@ -160,16 +169,19 @@ public static class OpacityEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the opacity effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Opacity(float opacity)
             => context.SetAndReturn(Process(context.Result, opacity));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the opacity effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Opacity(float opacity)
             => context.SetAndReturn(Process(context.Result, opacity));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the opacity effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> Opacity(float opacity)
             => context.SetAndReturn(Process(context.Result, opacity));
     }

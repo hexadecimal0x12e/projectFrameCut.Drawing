@@ -4,8 +4,12 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Rotates a picture by a specified angle with bilinear interpolation.</summary>
 public static class RotationEffect
 {
+    /// <summary>Apply the rotation effect to an 8-bit picture.</summary>
+    /// <param name="angleDegrees">Rotation angle in degrees (clockwise).</param>
+    /// <param name="expandCanvas">Whether to expand the canvas to fit the rotated image.</param>
     public static IPicture<byte> Process(IPicture<byte> picture, float angleDegrees, bool expandCanvas = true)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -114,6 +118,9 @@ public static class RotationEffect
         return result;
     }
 
+    /// <summary>Apply the rotation effect to a 16-bit picture.</summary>
+    /// <param name="angleDegrees">Rotation angle in degrees (clockwise).</param>
+    /// <param name="expandCanvas">Whether to expand the canvas to fit the rotated image.</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, float angleDegrees, bool expandCanvas = true)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -222,6 +229,9 @@ public static class RotationEffect
         return result;
     }
 
+    /// <summary>Apply the rotation effect using runtime type dispatch.</summary>
+    /// <param name="angleDegrees">Rotation angle in degrees (clockwise).</param>
+    /// <param name="expandCanvas">Whether to expand the canvas to fit the rotated image.</param>
     public static IPicture Process(IPicture source, float angleDegrees, bool expandCanvas = true)
     {
         return source switch
@@ -355,11 +365,13 @@ public static class RotationEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the rotation effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Rotate(float angleDegrees, bool expandCanvas = true)
             => context.SetAndReturn(Process(context.Result, angleDegrees, expandCanvas));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the rotation effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Rotate(float angleDegrees, bool expandCanvas = true)
             => context.SetAndReturn(Process(context.Result, angleDegrees, expandCanvas));
     }

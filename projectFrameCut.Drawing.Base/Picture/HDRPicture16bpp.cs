@@ -8,6 +8,7 @@ namespace projectFrameCut.Drawing.Base.Picture
 {
 
 
+    /// <summary>A 16-bit HDR picture with an additional brightness channel for high dynamic range.</summary>
     public class HDRPicture16bpp : Picture16bpp, IHDRPicture<ushort>
     {
         private const float DefaultHdrMaximumBrightness = 1000f;

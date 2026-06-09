@@ -331,12 +331,20 @@ public class NormalTypesettingEngine : ITypesettingEngine
         for (int i = 0; i < n; i++)
             totalWidth += charAdvances[i];
 
-        float xOffset = entry.Alignment switch
-        {
-            TextAlignment.Center => -totalWidth * 0.5f,
-            TextAlignment.Right => -totalWidth,
-            _ => 0f,
-        };
+        bool isRtl = entry.FlowDirection == TextFlowDirection.RightToLeft;
+        float xOffset = isRtl
+            ? entry.Alignment switch
+            {
+                TextAlignment.Center => totalWidth * 0.5f,
+                TextAlignment.Right => 0f,
+                _ => totalWidth,
+            }
+            : entry.Alignment switch
+            {
+                TextAlignment.Center => -totalWidth * 0.5f,
+                TextAlignment.Right => -totalWidth,
+                _ => 0f,
+            };
 
         // ── Second pass: create elements ──
         float cursorX = xOffset;
@@ -375,13 +383,16 @@ public class NormalTypesettingEngine : ITypesettingEngine
                 }
             }
 
+            // RTL: advance cursor left to this glyph's left edge before placement
+            if (isRtl) cursorX -= charAdvances[i];
+
             if (c == ' ')
             {
                 if (DebugMode)
                     AddDebugBoxes(result, cursorX, baselineY, charAdvances[i],
                         charFontSize, charCharSpacing, charWordSpacing, c, entry,
                         primaryFont, i == 0);
-                cursorX += charAdvances[i];
+                if (!isRtl) cursorX += charAdvances[i];
                 continue;
             }
 
@@ -393,7 +404,7 @@ public class NormalTypesettingEngine : ITypesettingEngine
                     AddDebugBoxes(result, cursorX, baselineY, charAdvances[i],
                         charFontSize, charCharSpacing, charWordSpacing, c, entry,
                         primaryFont, i == 0);
-                cursorX += charAdvances[i];
+                if (!isRtl) cursorX += charAdvances[i];
                 continue;
             }
 
@@ -426,7 +437,7 @@ public class NormalTypesettingEngine : ITypesettingEngine
                     primaryFont, i == 0);
             }
 
-            cursorX += charAdvances[i];
+            if (!isRtl) cursorX += charAdvances[i];
         }
     }
 

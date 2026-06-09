@@ -4,8 +4,11 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Applies gamma correction to a picture.</summary>
 public static class GammaEffect
 {
+    /// <summary>Apply the gamma effect to an 8-bit picture.</summary>
+    /// <param name="gamma">Gamma value. Must be greater than 0.</param>
     public static IPicture<byte> Process(IPicture<byte> picture, float gamma)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -52,6 +55,8 @@ public static class GammaEffect
         return result;
     }
 
+    /// <summary>Apply the gamma effect to a 16-bit picture.</summary>
+    /// <param name="gamma">Gamma value. Must be greater than 0.</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, float gamma)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -99,6 +104,8 @@ public static class GammaEffect
         return result;
     }
 
+    /// <summary>Apply the gamma effect to an HDR picture.</summary>
+    /// <param name="gamma">Gamma value. Must be greater than 0.</param>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture, float gamma)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -158,16 +165,19 @@ public static class GammaEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the gamma effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Gamma(float gamma)
             => context.SetAndReturn(Process(context.Result, gamma));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the gamma effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Gamma(float gamma)
             => context.SetAndReturn(Process(context.Result, gamma));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the gamma effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> Gamma(float gamma)
             => context.SetAndReturn(Process(context.Result, gamma));
     }

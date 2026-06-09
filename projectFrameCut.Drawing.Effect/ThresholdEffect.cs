@@ -4,8 +4,13 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Converts a picture to binary values using a luminance threshold.</summary>
 public static class ThresholdEffect
 {
+    /// <summary>Apply the threshold effect to an 8-bit picture.</summary>
+    /// <param name="threshold">Luminance threshold (0.0 to 1.0). Pixels above this become highValue, below become lowValue.</param>
+    /// <param name="lowValue">Output value for pixels below the threshold (0.0 to 1.0).</param>
+    /// <param name="highValue">Output value for pixels above the threshold (0.0 to 1.0).</param>
     public static IPicture<byte> Process(IPicture<byte> picture, float threshold = 0.5f, float lowValue = 0f, float highValue = 1f)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -59,6 +64,10 @@ public static class ThresholdEffect
         return result;
     }
 
+    /// <summary>Apply the threshold effect to a 16-bit picture.</summary>
+    /// <param name="threshold">Luminance threshold (0.0 to 1.0).</param>
+    /// <param name="lowValue">Output value for pixels below the threshold (0.0 to 1.0).</param>
+    /// <param name="highValue">Output value for pixels above the threshold (0.0 to 1.0).</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, float threshold = 0.5f, float lowValue = 0f, float highValue = 1f)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -113,6 +122,10 @@ public static class ThresholdEffect
         return result;
     }
 
+    /// <summary>Apply the threshold effect to an HDR picture.</summary>
+    /// <param name="threshold">Luminance threshold (0.0 to 1.0).</param>
+    /// <param name="lowValue">Output value for pixels below the threshold (0.0 to 1.0).</param>
+    /// <param name="highValue">Output value for pixels above the threshold (0.0 to 1.0).</param>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture, float threshold = 0.5f, float lowValue = 0f, float highValue = 1f)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -175,16 +188,19 @@ public static class ThresholdEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the threshold effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Threshold(float threshold = 0.5f, float lowValue = 0f, float highValue = 1f)
             => context.SetAndReturn(Process(context.Result, threshold, lowValue, highValue));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the threshold effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Threshold(float threshold = 0.5f, float lowValue = 0f, float highValue = 1f)
             => context.SetAndReturn(Process(context.Result, threshold, lowValue, highValue));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the threshold effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> Threshold(float threshold = 0.5f, float lowValue = 0f, float highValue = 1f)
             => context.SetAndReturn(Process(context.Result, threshold, lowValue, highValue));
     }

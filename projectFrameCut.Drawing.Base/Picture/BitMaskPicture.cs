@@ -6,6 +6,7 @@ using static projectFrameCut.Drawing.Base.IPicture;
 
 namespace projectFrameCut.Drawing.Base.Picture
 {
+    /// <summary>A 1-bit per pixel picture using boolean channels, typically used as a mask.</summary>
     [DebuggerDisplay("{GetDiagnosticsInfo()}")]
     public class BitMaskPicture : INoAlphaPicture<bool>
     {

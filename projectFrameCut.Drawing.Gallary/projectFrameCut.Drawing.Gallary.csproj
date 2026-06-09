@@ -25,6 +25,8 @@
 
 		<!-- App Identifier -->
 		<ApplicationId>com.hexadecimal0x12e.projectframecut_drawing.gallary</ApplicationId>
+		<PublisherName>hexadecimal0x12e</PublisherName>
+		<Authors>hexadecimal0x12e</Authors>
 
 		<!-- Versions -->
 		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>

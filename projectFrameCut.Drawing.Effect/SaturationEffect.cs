@@ -4,12 +4,15 @@ using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Effect;
 
+/// <summary>Adjusts the color saturation of a picture.</summary>
 public static class SaturationEffect
 {
     private const float RWeight = 0.2126f;
     private const float GWeight = 0.7152f;
     private const float BWeight = 0.0722f;
 
+    /// <summary>Apply the saturation effect to an 8-bit picture.</summary>
+    /// <param name="factor">Saturation multiplier. 0.0 = grayscale, 1.0 = original, greater than 1 = oversaturated.</param>
     public static IPicture<byte> Process(IPicture<byte> picture, float factor)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -53,6 +56,8 @@ public static class SaturationEffect
         return result;
     }
 
+    /// <summary>Apply the saturation effect to a 16-bit picture.</summary>
+    /// <param name="factor">Saturation multiplier. 0.0 = grayscale, 1.0 = original, greater than 1 = oversaturated.</param>
     public static IPicture<ushort> Process(IPicture<ushort> picture, float factor)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -96,6 +101,8 @@ public static class SaturationEffect
         return result;
     }
 
+    /// <summary>Apply the saturation effect to an HDR picture.</summary>
+    /// <param name="factor">Saturation multiplier. 0.0 = grayscale, 1.0 = original, greater than 1 = oversaturated.</param>
     public static IHDRPicture<ushort> Process(IHDRPicture<ushort> picture, float factor)
     {
         ArgumentNullException.ThrowIfNull(picture);
@@ -147,16 +154,19 @@ public static class SaturationEffect
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)
     {
+        /// <summary>Apply the saturation effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<byte>> Saturation(float factor)
             => context.SetAndReturn(Process(context.Result, factor));
     }
     extension(ProcessableIPictureContext<IPicture<ushort>> context)
     {
+        /// <summary>Apply the saturation effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IPicture<ushort>> Saturation(float factor)
             => context.SetAndReturn(Process(context.Result, factor));
     }
     extension(ProcessableIPictureContext<IHDRPicture<ushort>> context)
     {
+        /// <summary>Apply the saturation effect in a processing pipeline.</summary>
         public ProcessableIPictureContext<IHDRPicture<ushort>> Saturation(float factor)
             => context.SetAndReturn(Process(context.Result, factor));
     }
