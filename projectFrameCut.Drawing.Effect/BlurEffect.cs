@@ -325,12 +325,20 @@ public static class BlurEffect
 
     private static float[] BoxBlurChannel(byte[] source, int width, int height, int radius)
     {
-        return BoxBlurChannel(Array.ConvertAll(source, static x => (float)x), width, height, radius);
+        int pixels = source.Length;
+        var converted = GC.AllocateUninitializedArray<float>(pixels);
+        for (int i = 0; i < pixels; i++)
+            converted[i] = source[i];
+        return BoxBlurChannel(converted, width, height, radius);
     }
 
     private static float[] BoxBlurChannel(ushort[] source, int width, int height, int radius)
     {
-        return BoxBlurChannel(Array.ConvertAll(source, static x => (float)x), width, height, radius);
+        int pixels = source.Length;
+        var converted = GC.AllocateUninitializedArray<float>(pixels);
+        for (int i = 0; i < pixels; i++)
+            converted[i] = source[i];
+        return BoxBlurChannel(converted, width, height, radius);
     }
 
     extension(ProcessableIPictureContext<IPicture<byte>> context)

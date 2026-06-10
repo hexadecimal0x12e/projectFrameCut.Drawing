@@ -73,32 +73,34 @@ namespace projectFrameCut.Drawing.Processing.Resizing
                     int k01 = y1 * source.Width + x0;
                     int k11 = y1 * source.Width + x1;
 
-                    double r00 = source.r[k00];
-                    double r10 = source.r[k10];
-                    double r01 = source.r[k01];
-                    double r11 = source.r[k11];
+                    float r00 = source.r[k00];
+                    float r10 = source.r[k10];
+                    float r01 = source.r[k01];
+                    float r11 = source.r[k11];
 
-                    double g00 = source.g[k00];
-                    double g10 = source.g[k10];
-                    double g01 = source.g[k01];
-                    double g11 = source.g[k11];
+                    float g00 = source.g[k00];
+                    float g10 = source.g[k10];
+                    float g01 = source.g[k01];
+                    float g11 = source.g[k11];
 
-                    double b00 = source.b[k00];
-                    double b10 = source.b[k10];
-                    double b01 = source.b[k01];
-                    double b11 = source.b[k11];
+                    float b00 = source.b[k00];
+                    float b10 = source.b[k10];
+                    float b01 = source.b[k01];
+                    float b11 = source.b[k11];
 
-                    double wxa = 1.0 - wx;
-                    double wya = 1.0 - wy;
+                    float wxa = (float)(1.0 - wx);
+                    float wya = (float)(1.0 - wy);
+                    float fwx = (float)wx;
+                    float fwy = (float)wy;
 
-                    double rInterp = r00 * wxa * wya + r10 * wx * wya + r01 * wxa * wy + r11 * wx * wy;
-                    double gInterp = g00 * wxa * wya + g10 * wx * wya + g01 * wxa * wy + g11 * wx * wy;
-                    double bInterp = b00 * wxa * wya + b10 * wx * wya + b01 * wxa * wy + b11 * wx * wy;
+                    float rInterp = r00 * wxa * wya + r10 * fwx * wya + r01 * wxa * fwy + r11 * fwx * fwy;
+                    float gInterp = g00 * wxa * wya + g10 * fwx * wya + g01 * wxa * fwy + g11 * fwx * fwy;
+                    float bInterp = b00 * wxa * wya + b10 * fwx * wya + b01 * wxa * fwy + b11 * fwx * fwy;
 
                     int dstIdx = y * destW + x;
-                    int rr = (int)(rInterp + 0.5);
-                    int gg = (int)(gInterp + 0.5);
-                    int bb = (int)(bInterp + 0.5);
+                    int rr = (int)(rInterp + 0.5f);
+                    int gg = (int)(gInterp + 0.5f);
+                    int bb = (int)(bInterp + 0.5f);
                     if (rr < 0) rr = 0; if (rr > 65535) rr = 65535;
                     if (gg < 0) gg = 0; if (gg > 65535) gg = 65535;
                     if (bb < 0) bb = 0; if (bb > 65535) bb = 65535;
@@ -108,14 +110,14 @@ namespace projectFrameCut.Drawing.Processing.Resizing
 
                     if (source.HasAlphaChannel && source.a != null)
                     {
-                        double a00 = source.a[k00];
-                        double a10 = source.a[k10];
-                        double a01 = source.a[k01];
-                        double a11 = source.a[k11];
-                        double aInterp = a00 * wxa * wya + a10 * wx * wya + a01 * wxa * wy + a11 * wx * wy;
-                        if (double.IsNaN(aInterp) || double.IsInfinity(aInterp)) aInterp = 1.0;
-                        if (aInterp < 0) aInterp = 0; if (aInterp > 1) aInterp = 1;
-                        result.a![dstIdx] = (float)aInterp;
+                        float a00 = source.a[k00];
+                        float a10 = source.a[k10];
+                        float a01 = source.a[k01];
+                        float a11 = source.a[k11];
+                        float aInterp = a00 * wxa * wya + a10 * fwx * wya + a01 * wxa * fwy + a11 * fwx * fwy;
+                        if (float.IsNaN(aInterp) || float.IsInfinity(aInterp)) aInterp = 1f;
+                        if (aInterp < 0f) aInterp = 0f; if (aInterp > 1f) aInterp = 1f;
+                        result.a![dstIdx] = aInterp;
                     }
                 }
             }
@@ -204,32 +206,34 @@ namespace projectFrameCut.Drawing.Processing.Resizing
                     int k01 = y1 * source.Width + x0;
                     int k11 = y1 * source.Width + x1;
 
-                    double r00 = source.r[k00];
-                    double r10 = source.r[k10];
-                    double r01 = source.r[k01];
-                    double r11 = source.r[k11];
+                    float r00 = source.r[k00];
+                    float r10 = source.r[k10];
+                    float r01 = source.r[k01];
+                    float r11 = source.r[k11];
 
-                    double g00 = source.g[k00];
-                    double g10 = source.g[k10];
-                    double g01 = source.g[k01];
-                    double g11 = source.g[k11];
+                    float g00 = source.g[k00];
+                    float g10 = source.g[k10];
+                    float g01 = source.g[k01];
+                    float g11 = source.g[k11];
 
-                    double b00 = source.b[k00];
-                    double b10 = source.b[k10];
-                    double b01 = source.b[k01];
-                    double b11 = source.b[k11];
+                    float b00 = source.b[k00];
+                    float b10 = source.b[k10];
+                    float b01 = source.b[k01];
+                    float b11 = source.b[k11];
 
-                    double wxa = 1.0 - wx;
-                    double wya = 1.0 - wy;
+                    float wxa = (float)(1.0 - wx);
+                    float wya = (float)(1.0 - wy);
+                    float fwx = (float)wx;
+                    float fwy = (float)wy;
 
-                    double rInterp = r00 * wxa * wya + r10 * wx * wya + r01 * wxa * wy + r11 * wx * wy;
-                    double gInterp = g00 * wxa * wya + g10 * wx * wya + g01 * wxa * wy + g11 * wx * wy;
-                    double bInterp = b00 * wxa * wya + b10 * wx * wya + b01 * wxa * wy + b11 * wx * wy;
+                    float rInterp = r00 * wxa * wya + r10 * fwx * wya + r01 * wxa * fwy + r11 * fwx * fwy;
+                    float gInterp = g00 * wxa * wya + g10 * fwx * wya + g01 * wxa * fwy + g11 * fwx * fwy;
+                    float bInterp = b00 * wxa * wya + b10 * fwx * wya + b01 * wxa * fwy + b11 * fwx * fwy;
 
                     int dstIdx = y * destW + x;
-                    int rr = (int)(rInterp + 0.5);
-                    int gg = (int)(gInterp + 0.5);
-                    int bb = (int)(bInterp + 0.5);
+                    int rr = (int)(rInterp + 0.5f);
+                    int gg = (int)(gInterp + 0.5f);
+                    int bb = (int)(bInterp + 0.5f);
                     if (rr < 0) rr = 0; if (rr > 255) rr = 255;
                     if (gg < 0) gg = 0; if (gg > 255) gg = 255;
                     if (bb < 0) bb = 0; if (bb > 255) bb = 255;
@@ -239,14 +243,14 @@ namespace projectFrameCut.Drawing.Processing.Resizing
 
                     if (source.HasAlphaChannel && source.a != null)
                     {
-                        double a00 = source.a[k00];
-                        double a10 = source.a[k10];
-                        double a01 = source.a[k01];
-                        double a11 = source.a[k11];
-                        double aInterp = a00 * wxa * wya + a10 * wx * wya + a01 * wxa * wy + a11 * wx * wy;
-                        if (double.IsNaN(aInterp) || double.IsInfinity(aInterp)) aInterp = 1.0;
-                        if (aInterp < 0) aInterp = 0; if (aInterp > 1) aInterp = 1;
-                        result.a![dstIdx] = (float)aInterp;
+                        float a00 = source.a[k00];
+                        float a10 = source.a[k10];
+                        float a01 = source.a[k01];
+                        float a11 = source.a[k11];
+                        float aInterp = a00 * wxa * wya + a10 * fwx * wya + a01 * wxa * fwy + a11 * fwx * fwy;
+                        if (float.IsNaN(aInterp) || float.IsInfinity(aInterp)) aInterp = 1f;
+                        if (aInterp < 0f) aInterp = 0f; if (aInterp > 1f) aInterp = 1f;
+                        result.a![dstIdx] = aInterp;
                     }
                 }
             }
@@ -341,32 +345,34 @@ namespace projectFrameCut.Drawing.Processing.Resizing
                     int k01 = y1 * source.Width + x0;
                     int k11 = y1 * source.Width + x1;
 
-                    double r00 = source.r[k00];
-                    double r10 = source.r[k10];
-                    double r01 = source.r[k01];
-                    double r11 = source.r[k11];
+                    float r00 = source.r[k00];
+                    float r10 = source.r[k10];
+                    float r01 = source.r[k01];
+                    float r11 = source.r[k11];
 
-                    double g00 = source.g[k00];
-                    double g10 = source.g[k10];
-                    double g01 = source.g[k01];
-                    double g11 = source.g[k11];
+                    float g00 = source.g[k00];
+                    float g10 = source.g[k10];
+                    float g01 = source.g[k01];
+                    float g11 = source.g[k11];
 
-                    double b00 = source.b[k00];
-                    double b10 = source.b[k10];
-                    double b01 = source.b[k01];
-                    double b11 = source.b[k11];
+                    float b00 = source.b[k00];
+                    float b10 = source.b[k10];
+                    float b01 = source.b[k01];
+                    float b11 = source.b[k11];
 
-                    double wxa = 1.0 - wx;
-                    double wya = 1.0 - wy;
+                    float wxa = (float)(1.0 - wx);
+                    float wya = (float)(1.0 - wy);
+                    float fwx = (float)wx;
+                    float fwy = (float)wy;
 
-                    double rInterp = r00 * wxa * wya + r10 * wx * wya + r01 * wxa * wy + r11 * wx * wy;
-                    double gInterp = g00 * wxa * wya + g10 * wx * wya + g01 * wxa * wy + g11 * wx * wy;
-                    double bInterp = b00 * wxa * wya + b10 * wx * wya + b01 * wxa * wy + b11 * wx * wy;
+                    float rInterp = r00 * wxa * wya + r10 * fwx * wya + r01 * wxa * fwy + r11 * fwx * fwy;
+                    float gInterp = g00 * wxa * wya + g10 * fwx * wya + g01 * wxa * fwy + g11 * fwx * fwy;
+                    float bInterp = b00 * wxa * wya + b10 * fwx * wya + b01 * wxa * fwy + b11 * fwx * fwy;
 
                     int dstIdx = y * destW + x;
-                    int rr = (int)(rInterp + 0.5);
-                    int gg = (int)(gInterp + 0.5);
-                    int bb = (int)(bInterp + 0.5);
+                    int rr = (int)(rInterp + 0.5f);
+                    int gg = (int)(gInterp + 0.5f);
+                    int bb = (int)(bInterp + 0.5f);
                     if (rr < 0) rr = 0; if (rr > 65535) rr = 65535;
                     if (gg < 0) gg = 0; if (gg > 65535) gg = 65535;
                     if (bb < 0) bb = 0; if (bb > 65535) bb = 65535;
@@ -376,17 +382,17 @@ namespace projectFrameCut.Drawing.Processing.Resizing
 
                     if (source.HasAlphaChannel && source.a != null)
                     {
-                        double a00 = source.a[k00];
-                        double a10 = source.a[k10];
-                        double a01 = source.a[k01];
-                        double a11 = source.a[k11];
-                        double aInterp = a00 * wxa * wya + a10 * wx * wya + a01 * wxa * wy + a11 * wx * wy;
-                        if (double.IsNaN(aInterp) || double.IsInfinity(aInterp)) aInterp = 1.0;
-                        if (aInterp < 0) aInterp = 0; if (aInterp > 1) aInterp = 1;
-                        result.a![dstIdx] = (float)aInterp;
+                        float a00 = source.a[k00];
+                        float a10 = source.a[k10];
+                        float a01 = source.a[k01];
+                        float a11 = source.a[k11];
+                        float aInterp = a00 * wxa * wya + a10 * fwx * wya + a01 * wxa * fwy + a11 * fwx * fwy;
+                        if (float.IsNaN(aInterp) || float.IsInfinity(aInterp)) aInterp = 1f;
+                        if (aInterp < 0f) aInterp = 0f; if (aInterp > 1f) aInterp = 1f;
+                        result.a![dstIdx] = aInterp;
                     }
 
-                    double br00, br10, br01, br11;
+                    float br00, br10, br01, br11;
                     if (sourceBrightness != null)
                     {
                         br00 = sourceBrightness[k00];
@@ -396,15 +402,15 @@ namespace projectFrameCut.Drawing.Processing.Resizing
                     }
                     else
                     {
-                        br00 = Math.Clamp((0.2627 * r00 + 0.6780 * g00 + 0.0593 * b00) / 65535.0, 0.0, 1.0);
-                        br10 = Math.Clamp((0.2627 * r10 + 0.6780 * g10 + 0.0593 * b10) / 65535.0, 0.0, 1.0);
-                        br01 = Math.Clamp((0.2627 * r01 + 0.6780 * g01 + 0.0593 * b01) / 65535.0, 0.0, 1.0);
-                        br11 = Math.Clamp((0.2627 * r11 + 0.6780 * g11 + 0.0593 * b11) / 65535.0, 0.0, 1.0);
+                        br00 = Math.Clamp((0.2627f * r00 + 0.6780f * g00 + 0.0593f * b00) / 65535f, 0f, 1f);
+                        br10 = Math.Clamp((0.2627f * r10 + 0.6780f * g10 + 0.0593f * b10) / 65535f, 0f, 1f);
+                        br01 = Math.Clamp((0.2627f * r01 + 0.6780f * g01 + 0.0593f * b01) / 65535f, 0f, 1f);
+                        br11 = Math.Clamp((0.2627f * r11 + 0.6780f * g11 + 0.0593f * b11) / 65535f, 0f, 1f);
                     }
 
-                    double brightnessInterp = br00 * wxa * wya + br10 * wx * wya + br01 * wxa * wy + br11 * wx * wy;
-                    if (double.IsNaN(brightnessInterp) || double.IsInfinity(brightnessInterp)) brightnessInterp = 0.0;
-                    result.Brightness[dstIdx] = (float)Math.Clamp(brightnessInterp, 0.0, 1.0);
+                    float brightnessInterp = br00 * wxa * wya + br10 * fwx * wya + br01 * wxa * fwy + br11 * fwx * fwy;
+                    if (float.IsNaN(brightnessInterp) || float.IsInfinity(brightnessInterp)) brightnessInterp = 0f;
+                    result.Brightness[dstIdx] = Math.Clamp(brightnessInterp, 0f, 1f);
                 }
             }
 
