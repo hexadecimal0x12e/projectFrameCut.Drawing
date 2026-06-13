@@ -183,6 +183,7 @@ public partial class LineBreakPage : ContentPage
         {
             System.Diagnostics.Debug.WriteLine($"LineBreak error: {ex}");
             BrokenTextDisplay.Text = $"(error: {ex.Message})";
+            throw;
         }
         finally
         {

@@ -116,6 +116,10 @@ namespace projectFrameCut.Drawing.Text.Typology
                         }
                         else
                         {
+                            if (currentLine.Length < currentWord.Length && !entry.Text.Contains(' ')) //only 1 word in a line
+                            {
+                                throw new InvalidOperationException("Please use BreakCJKText() with allowPunctuationOverflowMaxWidth = false instead for Latin text which only have 1 word.");
+                            }
                             currentLine = currentLine.Substring(0, currentLine.Length - currentWord.Length);
                             result.Add(currentLine);
                             currentLine = "";
@@ -126,12 +130,21 @@ namespace projectFrameCut.Drawing.Text.Typology
                     }
                     else
                     {
-                        currentLine = currentLine.Substring(0, currentLine.Length - currentWord.Length);
-                        result.Add(currentLine);
-                        currentLine = "";
-                        i -= currentWord.Length;
-                        currentWord = "";
-                        currentLineWidth = 0;
+                        if (currentLine.Length < currentWord.Length && !entry.Text.Contains(' ')) //only 1 word in a line
+                        {
+                            // I don't want to write 2 logic to handle this case hah
+                            throw new InvalidOperationException("Please use BreakCJKText() with allowPunctuationOverflowMaxWidth = false instead for Latin text which only have 1 word.");
+                        }
+                        else
+                        {
+                            currentLine = currentLine.Substring(0, currentLine.Length - currentWord.Length);
+                            result.Add(currentLine);
+                            currentLine = "";
+                            i -= currentWord.Length;
+                            currentWord = "";
+                            currentLineWidth = 0;
+                        }
+
 
                     }
                 }
@@ -240,6 +253,11 @@ namespace projectFrameCut.Drawing.Text.Typology
             if (entry.Text.Any(c => (c >= '一' && c <= 0x9FFF) || (c >= 'ぁ' && c <= 'ゟ') || (c >= '゠' && c <= 'ヿ')))
             {
                 return BreakCJKText(entry, font, targetWidth, NewLine, allowPunctuationOverflowMaxWidthInCJK);
+            }
+            else if (entry.Text.TrimStart(' ').TrimEnd(' ').Split(' ').Length == 1 && !useDashWhenWordAcrossLineInLatin)
+            {
+                // If the text is a single word (no spaces), we can break it by character to avoid overflow
+                return BreakCJKText(entry, font, targetWidth, NewLine, false);
             }
             else
             {

@@ -11,23 +11,19 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
     /// <summary>Renders a <see cref="VectorPicture"/> to a raster <see cref="IPicture"/> using CPU scanline rendering.</summary>
     public class CPUVectorPictureRasterizer : IVectorPictureRasterizer
     {
-        private ushort[] _r;
-        private ushort[] _g;
-        private ushort[] _b;
-        private float[] _a;
-        private int _width;
-        private int _height;
-        private int _pixels;
-
-        // Per-element X/Y scales used to map normalized segment coordinates to pixels.
-        // Defaults are the canvas dimensions; elements with UseUniformScale set override
-        // these to min(width, height) so glyph aspect ratio is preserved on non-square
-        // canvases. The picture's actual pixel size (_width/_height) is unchanged and
-        // still drives clamping and pixel indexing.
-        private float _scaleX;
-        private float _scaleY;
-        private AntiAliasMode _aaMode;
-        private CancellationToken _cancellationToken;
+        /// <summary>Holds per-call render state so all sub-methods can be static and the class stateless.</summary>
+        private sealed class RenderContext
+        {
+            public ushort[] r = null!;
+            public ushort[] g = null!;
+            public ushort[] b = null!;
+            public float[] a = null!;
+            public int width;
+            public int height;
+            public float scaleX;
+            public float scaleY;
+            public CancellationToken cancellationToken;
+        }
 
         /// <summary>Convert a vector canvas to a raster picture.</summary>
         /// <param name="canvas">The vector canvas to render.</param>
@@ -51,73 +47,74 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
             int renderWidth = width * scaleFactor;
             int renderHeight = height * scaleFactor;
+            int pixels = renderWidth * renderHeight;
 
-            // Initialize render buffers
-            _width = renderWidth;
-            _height = renderHeight;
-            _pixels = renderWidth * renderHeight;
-            _r = new ushort[_pixels];
-            _g = new ushort[_pixels];
-            _b = new ushort[_pixels];
-            _a = new float[_pixels];
-            _scaleX = renderWidth;
-            _scaleY = renderHeight;
-            _aaMode = aaMode;
-            _cancellationToken = cancellationToken;
+            var ctx = new RenderContext
+            {
+                r = new ushort[pixels],
+                g = new ushort[pixels],
+                b = new ushort[pixels],
+                a = new float[pixels],
+                width = renderWidth,
+                height = renderHeight,
+                scaleX = renderWidth,
+                scaleY = renderHeight,
+                cancellationToken = cancellationToken,
+            };
 
             if (transparentBackground)
             {
-                Array.Fill(_a, 0f);
+                Array.Fill(ctx.a, 0f);
             }
             else
             {
-                Array.Fill(_a, 1f);
-                Array.Fill(_r, ushort.MaxValue);
-                Array.Fill(_g, ushort.MaxValue);
-                Array.Fill(_b, ushort.MaxValue);
+                Array.Fill(ctx.a, 1f);
+                Array.Fill(ctx.r, ushort.MaxValue);
+                Array.Fill(ctx.g, ushort.MaxValue);
+                Array.Fill(ctx.b, ushort.MaxValue);
             }
 
             foreach (var element in canvas.Elements.OrderBy(e => e.LayerIndex))
             {
-                _cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
 
                 if (element.UseUniformScale)
                 {
                     float us = Math.Min(renderWidth, renderHeight);
-                    _scaleX = us;
-                    _scaleY = us;
+                    ctx.scaleX = us;
+                    ctx.scaleY = us;
                     var ox = element.BaseX * renderWidth + element.RelativeX * us;
                     var oy = element.BaseY * renderHeight + element.RelativeY * us;
                     var segments = element.Draw();
-                    RenderSegments(this, segments, ox, oy, element.Rotation);
+                    RenderSegments(ctx, segments, ox, oy, element.Rotation);
                 }
                 else
                 {
-                    _scaleX = renderWidth;
-                    _scaleY = renderHeight;
+                    ctx.scaleX = renderWidth;
+                    ctx.scaleY = renderHeight;
                     var ox = element.RelativeX * renderWidth;
                     var oy = element.RelativeY * renderHeight;
                     var segments = element.Draw();
-                    RenderSegments(this, segments, ox, oy, element.Rotation);
+                    RenderSegments(ctx, segments, ox, oy, element.Rotation);
                 }
             }
 
             if (scaleFactor > 1)
-                return DownsampleToOutput(this, width, height, scaleFactor, renderWidth, cancellationToken);
+                return DownsampleToOutput(ctx, width, height, scaleFactor, renderWidth);
 
             var needsAlpha = false;
-            for (int i = 0; i < _pixels; i++)
+            for (int i = 0; i < pixels; i++)
             {
-                if (_a[i] < 1f)
+                if (ctx.a[i] < 1f)
                 { needsAlpha = true; break; }
             }
 
             return new Picture16bpp(width, height)
             {
-                r = _r,
-                g = _g,
-                b = _b,
-                a = needsAlpha ? _a : null,
+                r = ctx.r,
+                g = ctx.g,
+                b = ctx.b,
+                a = needsAlpha ? ctx.a : null,
                 HasAlphaChannel = needsAlpha,
             };
         }
@@ -127,7 +124,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // ---------------------------------------------------------------
 
         private static void RenderSegments(
-            CPUVectorPictureRasterizer converter, VectorSegment[] segments,
+            RenderContext ctx, VectorSegment[] segments,
             float ox, float oy, float rotation)
         {
             if (rotation != 0f)
@@ -135,45 +132,45 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 float cosA = MathF.Cos(rotation);
                 float sinA = MathF.Sin(rotation);
                 foreach (var segment in segments)
-                    converter.RenderSegment(RotateSegment(segment, cosA, sinA), ox, oy);
+                    RenderSegment(ctx, RotateSegment(segment, cosA, sinA), ox, oy);
             }
             else
             {
                 foreach (var segment in segments)
-                    converter.RenderSegment(segment, ox, oy);
+                    RenderSegment(ctx, segment, ox, oy);
             }
         }
 
-        private void RenderSegment(VectorSegment seg, float ox, float oy)
+        private static void RenderSegment(RenderContext ctx, VectorSegment seg, float ox, float oy)
         {
             switch (seg)
             {
                 case StraightLineVectorSegment s:
-                    RenderLine(s, ox, oy);
+                    RenderLine(ctx, s, ox, oy);
                     break;
                 case RoundedRectangleVectorSegment s:
-                    RenderRoundedRect(s, ox, oy);
+                    RenderRoundedRect(ctx, s, ox, oy);
                     break;
                 case RectangleVectorSegment s:
-                    RenderRect(s, ox, oy);
+                    RenderRect(ctx, s, ox, oy);
                     break;
                 case EllipseVectorSegment s:
-                    RenderEllipse(s, ox, oy);
+                    RenderEllipse(ctx, s, ox, oy);
                     break;
                 case CubicBezierVectorSegment s:
-                    RenderCubicBezier(s, ox, oy);
+                    RenderCubicBezier(ctx, s, ox, oy);
                     break;
                 case QuadraticBezierVectorSegment s:
-                    RenderQuadraticBezier(s, ox, oy);
+                    RenderQuadraticBezier(ctx, s, ox, oy);
                     break;
                 case ArcVectorSegment s:
-                    RenderArc(s, ox, oy);
+                    RenderArc(ctx, s, ox, oy);
                     break;
                 case PolygonVectorSegment s:
-                    RenderPolygon(s, ox, oy);
+                    RenderPolygon(ctx, s, ox, oy);
                     break;
                 case PolylineVectorSegment s:
-                    RenderPolyline(s, ox, oy);
+                    RenderPolyline(ctx, s, ox, oy);
                     break;
             }
         }
@@ -182,57 +179,57 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // Helpers
         // ---------------------------------------------------------------
 
-        private int ToPixel(float fraction) => (int)(fraction + 0.5f);
-        private float ToCanvas(int pixel) => pixel / (float)_width;
+        private static int ToPixel(float fraction) => (int)(fraction + 0.5f);
+        private static float ToCanvas(RenderContext ctx, int pixel) => pixel / (float)ctx.width;
 
-        private float CX(float segX, float ox) => ox + segX * _scaleX;
-        private float CY(float segY, float oy) => oy + segY * _scaleY;
+        private static float CX(RenderContext ctx, float segX, float ox) => ox + segX * ctx.scaleX;
+        private static float CY(RenderContext ctx, float segY, float oy) => oy + segY * ctx.scaleY;
 
-        private void BlendPixel(int x, int y, ushort r, ushort g, ushort b, float alpha)
+        private static void BlendPixel(RenderContext ctx, int x, int y, ushort r, ushort g, ushort b, float alpha)
         {
-            if ((uint)x >= (uint)_width || (uint)y >= (uint)_height || alpha <= 0f)
+            if ((uint)x >= (uint)ctx.width || (uint)y >= (uint)ctx.height || alpha <= 0f)
                 return;
 
-            var idx = y * _width + x;
+            var idx = y * ctx.width + x;
 
             if (alpha >= 1f)
             {
-                _r[idx] = r;
-                _g[idx] = g;
-                _b[idx] = b;
-                _a[idx] = 1f;
+                ctx.r[idx] = r;
+                ctx.g[idx] = g;
+                ctx.b[idx] = b;
+                ctx.a[idx] = 1f;
             }
             else
             {
-                var a0 = _a[idx];
+                var a0 = ctx.a[idx];
                 var aOut = a0 + alpha * (1f - a0);
                 if (aOut <= 0f) return;
 
-                _r[idx] = (ushort)((r * alpha + _r[idx] * a0 * (1f - alpha)) / aOut);
-                _g[idx] = (ushort)((g * alpha + _g[idx] * a0 * (1f - alpha)) / aOut);
-                _b[idx] = (ushort)((b * alpha + _b[idx] * a0 * (1f - alpha)) / aOut);
-                _a[idx] = aOut;
+                ctx.r[idx] = (ushort)((r * alpha + ctx.r[idx] * a0 * (1f - alpha)) / aOut);
+                ctx.g[idx] = (ushort)((g * alpha + ctx.g[idx] * a0 * (1f - alpha)) / aOut);
+                ctx.b[idx] = (ushort)((b * alpha + ctx.b[idx] * a0 * (1f - alpha)) / aOut);
+                ctx.a[idx] = aOut;
             }
         }
 
-        private void BlendPixel(int x, int y, ushort r, ushort g, ushort b, float alpha, ushort br, ushort bg, ushort bb)
+        private static void BlendPixel(RenderContext ctx, int x, int y, ushort r, ushort g, ushort b, float alpha, ushort br, ushort bg, ushort bb)
         {
-            if ((uint)x >= (uint)_width || (uint)y >= (uint)_height || alpha <= 0f)
+            if ((uint)x >= (uint)ctx.width || (uint)y >= (uint)ctx.height || alpha <= 0f)
                 return;
 
-            var idx = y * _width + x;
+            var idx = y * ctx.width + x;
 
             if (alpha >= 1f)
             {
-                _r[idx] = r;
-                _g[idx] = g;
-                _b[idx] = b;
+                ctx.r[idx] = r;
+                ctx.g[idx] = g;
+                ctx.b[idx] = b;
             }
             else
             {
-                _r[idx] = (ushort)(r * alpha + br * (1f - alpha));
-                _g[idx] = (ushort)(g * alpha + bg * (1f - alpha));
-                _b[idx] = (ushort)(b * alpha + bb * (1f - alpha));
+                ctx.r[idx] = (ushort)(r * alpha + br * (1f - alpha));
+                ctx.g[idx] = (ushort)(g * alpha + bg * (1f - alpha));
+                ctx.b[idx] = (ushort)(b * alpha + bb * (1f - alpha));
             }
         }
 
@@ -240,18 +237,18 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // Line
         // ---------------------------------------------------------------
 
-        private void RenderLine(StraightLineVectorSegment s, float ox, float oy)
+        private static void RenderLine(RenderContext ctx, StraightLineVectorSegment s, float ox, float oy)
         {
-            var x0 = CX(s.X1, ox);
-            var y0 = CY(s.Y1, oy);
-            var x1 = CX(s.X2, ox);
-            var y1 = CY(s.Y2, oy);
+            var x0 = CX(ctx, s.X1, ox);
+            var y0 = CY(ctx, s.Y1, oy);
+            var x1 = CX(ctx, s.X2, ox);
+            var y1 = CY(ctx, s.Y2, oy);
 
             if (s.Thickness > 0f && s.StrokeA > 0f)
-                DrawThickLine(x0, y0, x1, y1, s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
+                DrawThickLine(ctx, x0, y0, x1, y1, s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
         }
 
-        private void DrawThickLine(float x0, float y0, float x1, float y1, float thickness,
+        private static void DrawThickLine(RenderContext ctx, float x0, float y0, float x1, float y1, float thickness,
             ushort r, ushort g, ushort b, float alpha)
         {
             var dx = x1 - x0;
@@ -261,7 +258,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             if (len < 0.001f)
             {
                 var half = thickness * 0.5f;
-                FillRect(x0 - half, y0 - half, thickness, thickness, r, g, b, alpha);
+                FillRect(ctx, x0 - half, y0 - half, thickness, thickness, r, g, b, alpha);
                 return;
             }
 
@@ -275,25 +272,25 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             pts[2] = (x1 - nx, y1 - ny);
             pts[3] = (x1 + nx, y1 + ny);
 
-            FillPolygonScanline(pts, r, g, b, alpha);
+            FillPolygonScanline(ctx, pts, r, g, b, alpha);
         }
 
-        private void DrawWuLine(float x0, float y0, float x1, float y1,
+        private static void DrawWuLine(RenderContext ctx, float x0, float y0, float x1, float y1,
             ushort r, ushort g, ushort b, float alpha)
         {
             if (MathF.Abs(y1 - y0) < MathF.Abs(x1 - x0))
             {
                 if (x0 > x1) { Swap(ref x0, ref x1); Swap(ref y0, ref y1); }
-                DrawWuLineLow(x0, y0, x1, y1, r, g, b, alpha);
+                DrawWuLineLow(ctx, x0, y0, x1, y1, r, g, b, alpha);
             }
             else
             {
                 if (y0 > y1) { Swap(ref x0, ref x1); Swap(ref y0, ref y1); }
-                DrawWuLineHigh(x0, y0, x1, y1, r, g, b, alpha);
+                DrawWuLineHigh(ctx, x0, y0, x1, y1, r, g, b, alpha);
             }
         }
 
-        private void DrawWuLineLow(float x0, float y0, float x1, float y1,
+        private static void DrawWuLineLow(RenderContext ctx, float x0, float y0, float x1, float y1,
             ushort r, ushort g, ushort b, float alpha)
         {
             var dx = x1 - x0;
@@ -308,8 +305,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             {
                 // Main pixel
                 var coverage = 1f - (y - MathF.Floor(y));
-                BlendPixel(x, (int)(y), r, g, b, alpha * coverage);
-                BlendPixel(x, (int)(y) + (yi > 0 ? 1 : -1), r, g, b, alpha * (1f - coverage));
+                BlendPixel(ctx, x, (int)(y), r, g, b, alpha * coverage);
+                BlendPixel(ctx, x, (int)(y) + (yi > 0 ? 1 : -1), r, g, b, alpha * (1f - coverage));
 
                 if (d > 0)
                 {
@@ -320,7 +317,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             }
         }
 
-        private void DrawWuLineHigh(float x0, float y0, float x1, float y1,
+        private static void DrawWuLineHigh(RenderContext ctx, float x0, float y0, float x1, float y1,
             ushort r, ushort g, ushort b, float alpha)
         {
             var dx = x1 - x0;
@@ -334,8 +331,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             for (var y = (int)y0; y <= (int)y1; y++)
             {
                 var coverage = 1f - (x - MathF.Floor(x));
-                BlendPixel((int)x, y, r, g, b, alpha * coverage);
-                BlendPixel((int)(x) + (xi > 0 ? 1 : -1), y, r, g, b, alpha * (1f - coverage));
+                BlendPixel(ctx, (int)x, y, r, g, b, alpha * coverage);
+                BlendPixel(ctx, (int)(x) + (xi > 0 ? 1 : -1), y, r, g, b, alpha * (1f - coverage));
 
                 if (d > 0)
                 {
@@ -350,92 +347,92 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // Rectangle
         // ---------------------------------------------------------------
 
-        private void RenderRect(RectangleVectorSegment s, float ox, float oy)
+        private static void RenderRect(RenderContext ctx, RectangleVectorSegment s, float ox, float oy)
         {
-            var rx = CX(s.X, ox);
-            var ry = CY(s.Y, oy);
-            var rw = s.Width * _scaleX;
-            var rh = s.Height * _scaleY;
+            var rx = CX(ctx, s.X, ox);
+            var ry = CY(ctx, s.Y, oy);
+            var rw = s.Width * ctx.scaleX;
+            var rh = s.Height * ctx.scaleY;
 
             if (s.FillA > 0f)
-                FillRect(rx, ry, rw, rh, s.FillR, s.FillG, s.FillB, s.FillA);
+                FillRect(ctx, rx, ry, rw, rh, s.FillR, s.FillG, s.FillB, s.FillA);
 
             if (s.Thickness > 0f && s.StrokeA > 0f)
-                DrawRectStroke(rx, ry, rw, rh, s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
+                DrawRectStroke(ctx, rx, ry, rw, rh, s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
         }
 
-        private void FillRect(float x, float y, float w, float h,
+        private static void FillRect(RenderContext ctx, float x, float y, float w, float h,
             ushort r, ushort g, ushort b, float alpha)
         {
-            var x0 = Math.Clamp((int)(x + 0.5f), 0, _width - 1);
-            var y0 = Math.Clamp((int)(y + 0.5f), 0, _height - 1);
-            var x1 = Math.Clamp((int)(x + w + 0.5f), 0, _width - 1);
-            var y1 = Math.Clamp((int)(y + h + 0.5f), 0, _height - 1);
+            var x0 = Math.Clamp((int)(x + 0.5f), 0, ctx.width - 1);
+            var y0 = Math.Clamp((int)(y + 0.5f), 0, ctx.height - 1);
+            var x1 = Math.Clamp((int)(x + w + 0.5f), 0, ctx.width - 1);
+            var y1 = Math.Clamp((int)(y + h + 0.5f), 0, ctx.height - 1);
 
             for (var py = y0; py <= y1; py++)
             {
-                var row = py * _width;
+                var row = py * ctx.width;
                 for (var px = x0; px <= x1; px++)
                 {
                     var idx = row + px;
                     if (alpha >= 1f)
                     {
-                        _r[idx] = r; _g[idx] = g; _b[idx] = b; _a[idx] = 1f;
+                        ctx.r[idx] = r; ctx.g[idx] = g; ctx.b[idx] = b; ctx.a[idx] = 1f;
                     }
                     else
                     {
-                        var a0 = _a[idx];
+                        var a0 = ctx.a[idx];
                         var aOut = a0 + alpha * (1f - a0);
-                        _r[idx] = (ushort)((r * alpha + _r[idx] * a0 * (1f - alpha)) / aOut);
-                        _g[idx] = (ushort)((g * alpha + _g[idx] * a0 * (1f - alpha)) / aOut);
-                        _b[idx] = (ushort)((b * alpha + _b[idx] * a0 * (1f - alpha)) / aOut);
-                        _a[idx] = aOut;
+                        ctx.r[idx] = (ushort)((r * alpha + ctx.r[idx] * a0 * (1f - alpha)) / aOut);
+                        ctx.g[idx] = (ushort)((g * alpha + ctx.g[idx] * a0 * (1f - alpha)) / aOut);
+                        ctx.b[idx] = (ushort)((b * alpha + ctx.b[idx] * a0 * (1f - alpha)) / aOut);
+                        ctx.a[idx] = aOut;
                     }
                 }
             }
         }
 
-        private void DrawRectStroke(float x, float y, float w, float h, float thickness,
+        private static void DrawRectStroke(RenderContext ctx, float x, float y, float w, float h, float thickness,
             ushort r, ushort g, ushort b, float alpha)
         {
             var half = thickness * 0.5f;
             // Top
-            FillRect(x - half, y - half, w + thickness, thickness, r, g, b, alpha);
+            FillRect(ctx, x - half, y - half, w + thickness, thickness, r, g, b, alpha);
             // Bottom
-            FillRect(x - half, y + h - half, w + thickness, thickness, r, g, b, alpha);
+            FillRect(ctx, x - half, y + h - half, w + thickness, thickness, r, g, b, alpha);
             // Left
-            FillRect(x - half, y + half, thickness, h - thickness, r, g, b, alpha);
+            FillRect(ctx, x - half, y + half, thickness, h - thickness, r, g, b, alpha);
             // Right
-            FillRect(x + w - half, y + half, thickness, h - thickness, r, g, b, alpha);
+            FillRect(ctx, x + w - half, y + half, thickness, h - thickness, r, g, b, alpha);
         }
 
         // ---------------------------------------------------------------
         // Rounded Rectangle
         // ---------------------------------------------------------------
 
-        private void RenderRoundedRect(RoundedRectangleVectorSegment s, float ox, float oy)
+        private static void RenderRoundedRect(RenderContext ctx, RoundedRectangleVectorSegment s, float ox, float oy)
         {
-            var rx = CX(s.X, ox);
-            var ry = CY(s.Y, oy);
-            var rw = s.Width * _scaleX;
-            var rh = s.Height * _scaleY;
-            var radius = s.CornerRadius * MathF.Min(_scaleX, _scaleY);
+            var rx = CX(ctx, s.X, ox);
+            var ry = CY(ctx, s.Y, oy);
+            var rw = s.Width * ctx.scaleX;
+            var rh = s.Height * ctx.scaleY;
+            var radius = s.CornerRadius * MathF.Min(ctx.scaleX, ctx.scaleY);
 
             radius = MathF.Min(radius, MathF.Min(rw, rh) * 0.5f);
 
             if (s.FillA > 0f)
-                FillRoundedRect(rx, ry, rw, rh, radius, s.FillR, s.FillG, s.FillB, s.FillA);
+                FillRoundedRect(ctx, rx, ry, rw, rh, radius, s.FillR, s.FillG, s.FillB, s.FillA);
 
             if (s.Thickness > 0f && s.StrokeA > 0f)
-                DrawRoundedRectStroke(rx, ry, rw, rh, radius, s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
+                DrawRoundedRectStroke(ctx, rx, ry, rw, rh, radius, s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
         }
 
-        private void FillRoundedRect(float x, float y, float w, float h, float radius,
+        private static void FillRoundedRect(RenderContext ctx, float x, float y, float w, float h, float radius,
             ushort r, ushort g, ushort b, float alpha)
         {
             if (radius <= 0.5f)
             {
-                FillRect(x, y, w, h, r, g, b, alpha);
+                FillRect(ctx, x, y, w, h, r, g, b, alpha);
                 return;
             }
 
@@ -445,11 +442,11 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             var y1 = (int)(y + h + 0.5f);
 
             var clampY0 = Math.Max(y0, 0);
-            var clampY1 = Math.Min(y1, _height - 1);
+            var clampY1 = Math.Min(y1, ctx.height - 1);
             var clampX0 = Math.Max(x0, 0);
-            var clampX1 = Math.Min(x1, _width - 1);
+            var clampX1 = Math.Min(x1, ctx.width - 1);
 
-            Parallel.For(clampY0, clampY1 + 1, new ParallelOptions { CancellationToken = _cancellationToken }, py =>
+            Parallel.For(clampY0, clampY1 + 1, new ParallelOptions { CancellationToken = ctx.cancellationToken }, py =>
             {
                 for (var px = clampX0; px <= clampX1; px++)
                 {
@@ -477,44 +474,43 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
                     if (inside)
                     {
-                        var idx = py * _width + px;
+                        var idx = py * ctx.width + px;
                         if (alpha >= 1f)
                         {
-                            _r[idx] = r; _g[idx] = g; _b[idx] = b; _a[idx] = 1f;
+                            ctx.r[idx] = r; ctx.g[idx] = g; ctx.b[idx] = b; ctx.a[idx] = 1f;
                         }
                         else
                         {
-                            var a0 = _a[idx];
+                            var a0 = ctx.a[idx];
                             var aOut = a0 + alpha * (1f - a0);
-                            _r[idx] = (ushort)((r * alpha + _r[idx] * a0 * (1f - alpha)) / aOut);
-                            _g[idx] = (ushort)((g * alpha + _g[idx] * a0 * (1f - alpha)) / aOut);
-                            _b[idx] = (ushort)((b * alpha + _b[idx] * a0 * (1f - alpha)) / aOut);
-                            _a[idx] = aOut;
+                            ctx.r[idx] = (ushort)((r * alpha + ctx.r[idx] * a0 * (1f - alpha)) / aOut);
+                            ctx.g[idx] = (ushort)((g * alpha + ctx.g[idx] * a0 * (1f - alpha)) / aOut);
+                            ctx.b[idx] = (ushort)((b * alpha + ctx.b[idx] * a0 * (1f - alpha)) / aOut);
+                            ctx.a[idx] = aOut;
                         }
                     }
                 }
             });
         }
 
-        private void DrawRoundedRectStroke(float x, float y, float w, float h, float radius, float thickness,
+        private static void DrawRoundedRectStroke(RenderContext ctx, float x, float y, float w, float h, float radius, float thickness,
             ushort r, ushort g, ushort b, float alpha)
         {
             // Draw straight edge segments as filled rects
             var half = thickness * 0.5f;
-            var ri = MathF.Max(0, radius - half); // inner radius approx
 
             // Top edge (between top-left and top-right corners)
             if (w > 2 * radius)
-                FillRect(x + radius, y - half, w - 2 * radius, thickness, r, g, b, alpha);
+                FillRect(ctx, x + radius, y - half, w - 2 * radius, thickness, r, g, b, alpha);
             // Bottom edge
             if (w > 2 * radius)
-                FillRect(x + radius, y + h - half, w - 2 * radius, thickness, r, g, b, alpha);
+                FillRect(ctx, x + radius, y + h - half, w - 2 * radius, thickness, r, g, b, alpha);
             // Left edge
             if (h > 2 * radius)
-                FillRect(x - half, y + radius, thickness, h - 2 * radius, r, g, b, alpha);
+                FillRect(ctx, x - half, y + radius, thickness, h - 2 * radius, r, g, b, alpha);
             // Right edge
             if (h > 2 * radius)
-                FillRect(x + w - half, y + radius, thickness, h - 2 * radius, r, g, b, alpha);
+                FillRect(ctx, x + w - half, y + radius, thickness, h - 2 * radius, r, g, b, alpha);
 
             // Draw arc segments for corners: subdivide each 90-degree corner arc into line segments
             var segments = Math.Max(4, (int)(radius * 0.5f));
@@ -527,44 +523,44 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             var cx4 = x + radius;
             var cy4 = y + h - radius;
 
-            DrawArcLines(cx1, cy1, radius, MathF.PI, -MathF.PI * 0.5f, segments, thickness, r, g, b, alpha);
-            DrawArcLines(cx2, cy2, radius, MathF.PI * 1.5f, MathF.PI * 0.5f, segments, thickness, r, g, b, alpha);
-            DrawArcLines(cx3, cy3, radius, 0f, MathF.PI * 0.5f, segments, thickness, r, g, b, alpha);
-            DrawArcLines(cx4, cy4, radius, MathF.PI * 0.5f, MathF.PI * 0.5f, segments, thickness, r, g, b, alpha);
+            DrawArcLines(ctx, cx1, cy1, radius, MathF.PI, -MathF.PI * 0.5f, segments, thickness, r, g, b, alpha);
+            DrawArcLines(ctx, cx2, cy2, radius, MathF.PI * 1.5f, MathF.PI * 0.5f, segments, thickness, r, g, b, alpha);
+            DrawArcLines(ctx, cx3, cy3, radius, 0f, MathF.PI * 0.5f, segments, thickness, r, g, b, alpha);
+            DrawArcLines(ctx, cx4, cy4, radius, MathF.PI * 0.5f, MathF.PI * 0.5f, segments, thickness, r, g, b, alpha);
         }
 
         // ---------------------------------------------------------------
         // Ellipse
         // ---------------------------------------------------------------
 
-        private void RenderEllipse(EllipseVectorSegment s, float ox, float oy)
+        private static void RenderEllipse(RenderContext ctx, EllipseVectorSegment s, float ox, float oy)
         {
-            var cx = CX(s.X, ox);
-            var cy = CY(s.Y, oy);
-            var rx = s.RadiusX * _scaleX;
-            var ry = s.RadiusY * _scaleY;
+            var cx = CX(ctx, s.X, ox);
+            var cy = CY(ctx, s.Y, oy);
+            var rx = s.RadiusX * ctx.scaleX;
+            var ry = s.RadiusY * ctx.scaleY;
 
             if (rx <= 0f || ry <= 0f) return;
 
             if (s.FillA > 0f)
-                FillEllipse(cx, cy, rx, ry, s.FillR, s.FillG, s.FillB, s.FillA);
+                FillEllipse(ctx, cx, cy, rx, ry, s.FillR, s.FillG, s.FillB, s.FillA);
 
             if (s.Thickness > 0f && s.StrokeA > 0f)
-                DrawEllipseStroke(cx, cy, rx, ry, s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
+                DrawEllipseStroke(ctx, cx, cy, rx, ry, s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
         }
 
-        private void FillEllipse(float cx, float cy, float rx, float ry,
+        private static void FillEllipse(RenderContext ctx, float cx, float cy, float rx, float ry,
             ushort r, ushort g, ushort b, float alpha)
         {
-            var x0 = Math.Clamp((int)(cx - rx + 0.5f), 0, _width - 1);
-            var y0 = Math.Clamp((int)(cy - ry + 0.5f), 0, _height - 1);
-            var x1 = Math.Clamp((int)(cx + rx + 0.5f), 0, _width - 1);
-            var y1 = Math.Clamp((int)(cy + ry + 0.5f), 0, _height - 1);
+            var x0 = Math.Clamp((int)(cx - rx + 0.5f), 0, ctx.width - 1);
+            var y0 = Math.Clamp((int)(cy - ry + 0.5f), 0, ctx.height - 1);
+            var x1 = Math.Clamp((int)(cx + rx + 0.5f), 0, ctx.width - 1);
+            var y1 = Math.Clamp((int)(cy + ry + 0.5f), 0, ctx.height - 1);
 
             var rx2 = rx * rx;
             var ry2 = ry * ry;
 
-            Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = _cancellationToken }, py =>
+            Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = ctx.cancellationToken }, py =>
             {
                 var dy = py + 0.5f - cy;
                 var dy2 = dy * dy;
@@ -573,54 +569,54 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 if (t < 0) return;
 
                 var halfSpan = rx * MathF.Sqrt(t);
-                var left = Math.Clamp((int)(cx - halfSpan + 0.5f), 0, _width - 1);
-                var right = Math.Clamp((int)(cx + halfSpan + 0.5f), 0, _width - 1);
+                var left = Math.Clamp((int)(cx - halfSpan + 0.5f), 0, ctx.width - 1);
+                var right = Math.Clamp((int)(cx + halfSpan + 0.5f), 0, ctx.width - 1);
 
                 for (var px = left; px <= right; px++)
                 {
-                    var idx = py * _width + px;
+                    var idx = py * ctx.width + px;
                     if (alpha >= 1f)
                     {
-                        _r[idx] = r; _g[idx] = g; _b[idx] = b; _a[idx] = 1f;
+                        ctx.r[idx] = r; ctx.g[idx] = g; ctx.b[idx] = b; ctx.a[idx] = 1f;
                     }
                     else
                     {
-                        var a0 = _a[idx];
+                        var a0 = ctx.a[idx];
                         var aOut = a0 + alpha * (1f - a0);
-                        _r[idx] = (ushort)((r * alpha + _r[idx] * a0 * (1f - alpha)) / aOut);
-                        _g[idx] = (ushort)((g * alpha + _g[idx] * a0 * (1f - alpha)) / aOut);
-                        _b[idx] = (ushort)((b * alpha + _b[idx] * a0 * (1f - alpha)) / aOut);
-                        _a[idx] = aOut;
+                        ctx.r[idx] = (ushort)((r * alpha + ctx.r[idx] * a0 * (1f - alpha)) / aOut);
+                        ctx.g[idx] = (ushort)((g * alpha + ctx.g[idx] * a0 * (1f - alpha)) / aOut);
+                        ctx.b[idx] = (ushort)((b * alpha + ctx.b[idx] * a0 * (1f - alpha)) / aOut);
+                        ctx.a[idx] = aOut;
                     }
                 }
             });
         }
 
-        private void DrawEllipseStroke(float cx, float cy, float rx, float ry, float thickness,
+        private static void DrawEllipseStroke(RenderContext ctx, float cx, float cy, float rx, float ry, float thickness,
             ushort r, ushort g, ushort b, float alpha)
         {
             // Approximate ellipse as line segments
             var numSegments = Math.Max(12, (int)(MathF.PI * MathF.Sqrt(rx + ry) * 0.5f));
-            DrawArcLines(cx, cy, rx, ry, 0f, MathF.PI * 2f, numSegments, thickness, r, g, b, alpha);
+            DrawArcLines(ctx, cx, cy, rx, ry, 0f, MathF.PI * 2f, numSegments, thickness, r, g, b, alpha);
         }
 
         // ---------------------------------------------------------------
         // Arc (always stroke)
         // ---------------------------------------------------------------
 
-        private void RenderArc(ArcVectorSegment s, float ox, float oy)
+        private static void RenderArc(RenderContext ctx, ArcVectorSegment s, float ox, float oy)
         {
             if (s.Thickness <= 0f || s.StrokeA <= 0f) return;
 
-            var cx = CX(s.X, ox);
-            var cy = CY(s.Y, oy);
-            var rx = s.RadiusX * _scaleX;
-            var ry = s.RadiusY * _scaleY;
+            var cx = CX(ctx, s.X, ox);
+            var cy = CY(ctx, s.Y, oy);
+            var rx = s.RadiusX * ctx.scaleX;
+            var ry = s.RadiusY * ctx.scaleY;
 
             if (rx <= 0f || ry <= 0f) return;
 
             var numSegments = Math.Max(4, (int)(MathF.Abs(s.SweepAngle) * MathF.Sqrt(rx + ry) * 0.3f));
-            DrawArcLines(cx, cy, rx, ry, s.StartAngle, s.SweepAngle, numSegments,
+            DrawArcLines(ctx, cx, cy, rx, ry, s.StartAngle, s.SweepAngle, numSegments,
                 s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
         }
 
@@ -628,20 +624,20 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // Cubic Bezier (always stroke)
         // ---------------------------------------------------------------
 
-        private void RenderCubicBezier(CubicBezierVectorSegment s, float ox, float oy)
+        private static void RenderCubicBezier(RenderContext ctx, CubicBezierVectorSegment s, float ox, float oy)
         {
             if (s.Thickness <= 0f || s.StrokeA <= 0f) return;
 
-            var p0 = (x: CX(s.X1, ox), y: CY(s.Y1, oy));
-            var p1 = (x: CX(s.X2, ox), y: CY(s.Y2, oy));
-            var p2 = (x: CX(s.X3, ox), y: CY(s.Y3, oy));
-            var p3 = (x: CX(s.X4, ox), y: CY(s.Y4, oy));
+            var p0 = (x: CX(ctx, s.X1, ox), y: CY(ctx, s.Y1, oy));
+            var p1 = (x: CX(ctx, s.X2, ox), y: CY(ctx, s.Y2, oy));
+            var p2 = (x: CX(ctx, s.X3, ox), y: CY(ctx, s.Y3, oy));
+            var p3 = (x: CX(ctx, s.X4, ox), y: CY(ctx, s.Y4, oy));
 
             // Flatten cubic bezier into line segments, then draw with thickness
             var points = new List<(float x, float y)>();
             FlattenCubicBezier(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, points, 0);
 
-            DrawPolylineSegments(points, s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
+            DrawPolylineSegments(ctx, points, s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
         }
 
         private static void FlattenCubicBezier(float x0, float y0, float x1, float y1,
@@ -686,18 +682,18 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // Quadratic Bezier (always stroke)
         // ---------------------------------------------------------------
 
-        private void RenderQuadraticBezier(QuadraticBezierVectorSegment s, float ox, float oy)
+        private static void RenderQuadraticBezier(RenderContext ctx, QuadraticBezierVectorSegment s, float ox, float oy)
         {
             if (s.Thickness <= 0f || s.StrokeA <= 0f) return;
 
-            var p0 = (x: CX(s.X1, ox), y: CY(s.Y1, oy));
-            var p1 = (x: CX(s.X2, ox), y: CY(s.Y2, oy));
-            var p2 = (x: CX(s.X3, ox), y: CY(s.Y3, oy));
+            var p0 = (x: CX(ctx, s.X1, ox), y: CY(ctx, s.Y1, oy));
+            var p1 = (x: CX(ctx, s.X2, ox), y: CY(ctx, s.Y2, oy));
+            var p2 = (x: CX(ctx, s.X3, ox), y: CY(ctx, s.Y3, oy));
 
             var points = new List<(float x, float y)>();
             FlattenQuadraticBezier(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, points, 0);
 
-            DrawPolylineSegments(points, s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
+            DrawPolylineSegments(ctx, points, s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
         }
 
         private static void FlattenQuadraticBezier(float x0, float y0, float x1, float y1,
@@ -733,7 +729,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // Polygon (fill + stroke)
         // ---------------------------------------------------------------
 
-        private void RenderPolygon(PolygonVectorSegment s, float ox, float oy)
+        private static void RenderPolygon(RenderContext ctx, PolygonVectorSegment s, float ox, float oy)
         {
             var pts = s.Points;
             if (pts.Length < 3) return;
@@ -742,7 +738,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 ? stackalloc (float, float)[pts.Length]
                 : new (float, float)[pts.Length];
             for (var i = 0; i < pts.Length; i++)
-                canvasPts[i] = (CX(pts[i].X, ox), CY(pts[i].Y, oy));
+                canvasPts[i] = (CX(ctx, pts[i].X, ox), CY(ctx, pts[i].Y, oy));
 
             bool hasFill = s.FillA > 0f;
             bool hasStroke = s.Thickness > 0f && s.StrokeA > 0f;
@@ -752,11 +748,11 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             {
                 if (hasHoles)
                 {
-                    FillPolygonScanlineEvenOdd(canvasPts, s.Holes!, ox, oy, s.FillR, s.FillG, s.FillB, s.FillA);
+                    FillPolygonScanlineEvenOdd(ctx, canvasPts, s.Holes!, ox, oy, s.FillR, s.FillG, s.FillB, s.FillA);
                 }
                 else
                 {
-                    FillPolygonScanline(canvasPts, s.FillR, s.FillG, s.FillB, s.FillA);
+                    FillPolygonScanline(ctx, canvasPts, s.FillR, s.FillG, s.FillB, s.FillA);
                 }
             }
 
@@ -765,7 +761,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 for (var i = 0; i < pts.Length; i++)
                 {
                     var j = (i + 1) % pts.Length;
-                    DrawThickLine(canvasPts[i].x, canvasPts[i].y, canvasPts[j].x, canvasPts[j].y,
+                    DrawThickLine(ctx, canvasPts[i].x, canvasPts[i].y, canvasPts[j].x, canvasPts[j].y,
                         s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
                 }
             }
@@ -775,7 +771,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // Polyline (always stroke)
         // ---------------------------------------------------------------
 
-        private void RenderPolyline(PolylineVectorSegment s, float ox, float oy)
+        private static void RenderPolyline(RenderContext ctx, PolylineVectorSegment s, float ox, float oy)
         {
             if (s.Thickness <= 0f || s.StrokeA <= 0f) return;
 
@@ -784,8 +780,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
             for (var i = 1; i < pts.Length; i++)
             {
-                DrawThickLine(CX(pts[i - 1].X, ox), CY(pts[i - 1].Y, oy),
-                    CX(pts[i].X, ox), CY(pts[i].Y, oy),
+                DrawThickLine(ctx, CX(ctx, pts[i - 1].X, ox), CY(ctx, pts[i - 1].Y, oy),
+                    CX(ctx, pts[i].X, ox), CY(ctx, pts[i].Y, oy),
                     s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
             }
         }
@@ -794,11 +790,11 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // Generic thick polyline (segment list from bezier flattening)
         // ---------------------------------------------------------------
 
-        private void DrawPolylineSegments(List<(float x, float y)> points, float thickness,
+        private static void DrawPolylineSegments(RenderContext ctx, List<(float x, float y)> points, float thickness,
             ushort r, ushort g, ushort b, float alpha)
         {
             for (var i = 1; i < points.Count; i++)
-                DrawThickLine(points[i - 1].x, points[i - 1].y, points[i].x, points[i].y,
+                DrawThickLine(ctx, points[i - 1].x, points[i - 1].y, points[i].x, points[i].y,
                     thickness, r, g, b, alpha);
         }
 
@@ -806,7 +802,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // Arc subdivision helper
         // ---------------------------------------------------------------
 
-        private void DrawArcLines(float cx, float cy, float rx, float ry,
+        private static void DrawArcLines(RenderContext ctx, float cx, float cy, float rx, float ry,
             float startAngle, float sweepAngle, int segments, float thickness,
             ushort r, ushort g, ushort b, float alpha)
         {
@@ -825,24 +821,24 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 var currX = cx + rx * cosA;
                 var currY = cy + ry * sinA;
 
-                DrawThickLine(prevX, prevY, currX, currY, thickness, r, g, b, alpha);
+                DrawThickLine(ctx, prevX, prevY, currX, currY, thickness, r, g, b, alpha);
                 prevX = currX;
                 prevY = currY;
             }
         }
 
-        private void DrawArcLines(float cx, float cy, float radius,
+        private static void DrawArcLines(RenderContext ctx, float cx, float cy, float radius,
             float startAngle, float sweepAngle, int segments, float thickness,
             ushort r, ushort g, ushort b, float alpha)
         {
-            DrawArcLines(cx, cy, radius, radius, startAngle, sweepAngle, segments, thickness, r, g, b, alpha);
+            DrawArcLines(ctx, cx, cy, radius, radius, startAngle, sweepAngle, segments, thickness, r, g, b, alpha);
         }
 
         // ---------------------------------------------------------------
         // Scanline polygon fill
         // ---------------------------------------------------------------
 
-        private void FillPolygonScanline(ReadOnlySpan<(float x, float y)> pts,
+        private static void FillPolygonScanline(RenderContext ctx, ReadOnlySpan<(float x, float y)> pts,
             ushort r, ushort g, ushort b, float alpha)
         {
             var minY = float.MaxValue;
@@ -853,13 +849,13 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 if (pts[i].y > maxY) maxY = pts[i].y;
             }
 
-            var y0 = Math.Clamp((int)(minY + 0.5f), 0, _height - 1);
-            var y1 = Math.Clamp((int)(maxY + 0.5f), 0, _height - 1);
+            var y0 = Math.Clamp((int)(minY + 0.5f), 0, ctx.height - 1);
+            var y1 = Math.Clamp((int)(maxY + 0.5f), 0, ctx.height - 1);
             var n = pts.Length;
             var ptArray = new (float x, float y)[n];
             pts.CopyTo(ptArray);
 
-            Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = _cancellationToken }, py =>
+            Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = ctx.cancellationToken }, py =>
             {
                 var y = py + 0.5f;
                 var intersections = new float[n];
@@ -884,24 +880,24 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
                 for (var k = 0; k < count - 1; k += 2)
                 {
-                    var xL = Math.Clamp((int)(intersections[k] + 0.5f), 0, _width - 1);
-                    var xR = Math.Clamp((int)(intersections[k + 1] + 0.5f), 0, _width - 1);
+                    var xL = Math.Clamp((int)(intersections[k] + 0.5f), 0, ctx.width - 1);
+                    var xR = Math.Clamp((int)(intersections[k + 1] + 0.5f), 0, ctx.width - 1);
 
                     for (var px = xL; px <= xR; px++)
                     {
-                        var idx = py * _width + px;
+                        var idx = py * ctx.width + px;
                         if (alpha >= 1f)
                         {
-                            _r[idx] = r; _g[idx] = g; _b[idx] = b; _a[idx] = 1f;
+                            ctx.r[idx] = r; ctx.g[idx] = g; ctx.b[idx] = b; ctx.a[idx] = 1f;
                         }
                         else
                         {
-                            var a0 = _a[idx];
+                            var a0 = ctx.a[idx];
                             var aOut = a0 + alpha * (1f - a0);
-                            _r[idx] = (ushort)((r * alpha + _r[idx] * a0 * (1f - alpha)) / aOut);
-                            _g[idx] = (ushort)((g * alpha + _g[idx] * a0 * (1f - alpha)) / aOut);
-                            _b[idx] = (ushort)((b * alpha + _b[idx] * a0 * (1f - alpha)) / aOut);
-                            _a[idx] = aOut;
+                            ctx.r[idx] = (ushort)((r * alpha + ctx.r[idx] * a0 * (1f - alpha)) / aOut);
+                            ctx.g[idx] = (ushort)((g * alpha + ctx.g[idx] * a0 * (1f - alpha)) / aOut);
+                            ctx.b[idx] = (ushort)((b * alpha + ctx.b[idx] * a0 * (1f - alpha)) / aOut);
+                            ctx.a[idx] = aOut;
                         }
                     }
                 }
@@ -912,7 +908,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // Even-odd polygon fill (outer + holes)
         // ---------------------------------------------------------------
 
-        private void FillPolygonScanlineEvenOdd(
+        private static void FillPolygonScanlineEvenOdd(
+            RenderContext ctx,
             ReadOnlySpan<(float x, float y)> outerPts,
             Point[][] holes,
             float ox, float oy,
@@ -948,7 +945,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     ? holeBuffer[..hole.Length]
                     : new (float, float)[hole.Length];
                 for (int i = 0; i < hole.Length; i++)
-                    holePts[i] = (CX(hole[i].X, ox), CY(hole[i].Y, oy));
+                    holePts[i] = (CX(ctx, hole[i].X, ox), CY(ctx, hole[i].Y, oy));
                 AddEdges(holePts);
             }
             int edgeCount = ei;
@@ -961,12 +958,12 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 if (edges[i].yB > maxY) maxY = edges[i].yB;
             }
 
-            int y0 = Math.Clamp((int)(minY + 0.5f), 0, _height - 1);
-            int y1 = Math.Clamp((int)(maxY + 0.5f), 0, _height - 1);
+            int y0 = Math.Clamp((int)(minY + 0.5f), 0, ctx.height - 1);
+            int y1 = Math.Clamp((int)(maxY + 0.5f), 0, ctx.height - 1);
 
             var totalEdgesCount = totalEdges; // captured by closure
 
-            Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = _cancellationToken }, py =>
+            Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = ctx.cancellationToken }, py =>
             {
                 float y = py + 0.5f;
                 var intersections = new float[totalEdgesCount];
@@ -984,24 +981,24 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
                 for (int k = 0; k < count - 1; k += 2)
                 {
-                    int xL = Math.Clamp((int)(intersections[k] + 0.5f), 0, _width - 1);
-                    int xR = Math.Clamp((int)(intersections[k + 1] + 0.5f), 0, _width - 1);
+                    int xL = Math.Clamp((int)(intersections[k] + 0.5f), 0, ctx.width - 1);
+                    int xR = Math.Clamp((int)(intersections[k + 1] + 0.5f), 0, ctx.width - 1);
 
                     for (int px = xL; px <= xR; px++)
                     {
-                        int idx = py * _width + px;
+                        int idx = py * ctx.width + px;
                         if (alpha >= 1f)
                         {
-                            _r[idx] = r; _g[idx] = g; _b[idx] = b; _a[idx] = 1f;
+                            ctx.r[idx] = r; ctx.g[idx] = g; ctx.b[idx] = b; ctx.a[idx] = 1f;
                         }
                         else
                         {
-                            var a0 = _a[idx];
+                            var a0 = ctx.a[idx];
                             var aOut = a0 + alpha * (1f - a0);
-                            _r[idx] = (ushort)((r * alpha + _r[idx] * a0 * (1f - alpha)) / aOut);
-                            _g[idx] = (ushort)((g * alpha + _g[idx] * a0 * (1f - alpha)) / aOut);
-                            _b[idx] = (ushort)((b * alpha + _b[idx] * a0 * (1f - alpha)) / aOut);
-                            _a[idx] = aOut;
+                            ctx.r[idx] = (ushort)((r * alpha + ctx.r[idx] * a0 * (1f - alpha)) / aOut);
+                            ctx.g[idx] = (ushort)((g * alpha + ctx.g[idx] * a0 * (1f - alpha)) / aOut);
+                            ctx.b[idx] = (ushort)((b * alpha + ctx.b[idx] * a0 * (1f - alpha)) / aOut);
+                            ctx.a[idx] = aOut;
                         }
                     }
                 }
@@ -1166,9 +1163,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // ---------------------------------------------------------------
 
         private static IPicture DownsampleToOutput(
-            CPUVectorPictureRasterizer converter,
-            int outWidth, int outHeight, int scaleFactor, int renderWidth,
-            CancellationToken cancellationToken)
+            RenderContext ctx,
+            int outWidth, int outHeight, int scaleFactor, int renderWidth)
         {
             int pixels = outWidth * outHeight;
             int blockSize = scaleFactor * scaleFactor;
@@ -1178,7 +1174,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             var outB = new ushort[pixels];
             var outA = new float[pixels];
 
-            Parallel.For(0, outHeight, new ParallelOptions { CancellationToken = cancellationToken }, y =>
+            Parallel.For(0, outHeight, new ParallelOptions { CancellationToken = ctx.cancellationToken }, y =>
             {
                 int inBaseY = y * scaleFactor;
                 for (int x = 0; x < outWidth; x++)
@@ -1193,10 +1189,10 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                         for (int sx = 0; sx < scaleFactor; sx++)
                         {
                             int idx = row + sx;
-                            sumR += converter._r[idx];
-                            sumG += converter._g[idx];
-                            sumB += converter._b[idx];
-                            sumA += (long)(converter._a[idx] * ushort.MaxValue);
+                            sumR += ctx.r[idx];
+                            sumG += ctx.g[idx];
+                            sumB += ctx.b[idx];
+                            sumA += (long)(ctx.a[idx] * ushort.MaxValue);
                         }
                     }
 

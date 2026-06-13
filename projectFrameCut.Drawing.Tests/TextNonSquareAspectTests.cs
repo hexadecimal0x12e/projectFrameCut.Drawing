@@ -51,7 +51,7 @@ public sealed class TextNonSquareAspectTests
     // ──────────────────────────────────────────────
 
     [TestMethod]
-    public void VectorToIPicture_TextRendersAtUniformAspectOnWideCanvas()
+    public void CPUVectorPictureRasterizer_TextRendersAtUniformAspectOnWideCanvas()
     {
         if (!File.Exists(FontPath))
             Assert.Inconclusive($"Arial not present at {FontPath}; skipping integration test.");
@@ -75,7 +75,7 @@ public sealed class TextNonSquareAspectTests
         foreach (var el in canvas.Elements)
             Assert.IsTrue(el.UseUniformScale, "Glyph elements must request uniform scaling.");
 
-        var pic = new VectorToIPicture().Convert(canvas, targetW, targetH, transparentBackground: true);
+        var pic = new CPUVectorPictureRasterizer().Convert(canvas, targetW, targetH, transparentBackground: true);
         SaveDiagnosticPng(pic, "wide");
 
         // Scan for the bounding box of opaque (text) pixels and verify the
@@ -98,7 +98,7 @@ public sealed class TextNonSquareAspectTests
     }
 
     [TestMethod]
-    public void VectorToIPicture_TextRendersAtUniformAspectOnTallCanvas()
+    public void CPUVectorPictureRasterizer_TextRendersAtUniformAspectOnTallCanvas()
     {
         if (!File.Exists(FontPath))
             Assert.Inconclusive($"Arial not present at {FontPath}; skipping integration test.");
@@ -118,7 +118,7 @@ public sealed class TextNonSquareAspectTests
         };
 
         var canvas = new NormalTypesettingEngine().Layout(entry, font);
-        var pic = new VectorToIPicture().Convert(canvas, targetW, targetH, transparentBackground: true);
+        var pic = new CPUVectorPictureRasterizer().Convert(canvas, targetW, targetH, transparentBackground: true);
         SaveDiagnosticPng(pic, "tall");
 
         var bbox = ScanOpaqueBoundingBox(pic);
@@ -137,7 +137,7 @@ public sealed class TextNonSquareAspectTests
     }
 
     [TestMethod]
-    public void VectorToIPicture_TextRendersAtUniformAspectOnSquareCanvas()
+    public void CPUVectorPictureRasterizer_TextRendersAtUniformAspectOnSquareCanvas()
     {
         if (!File.Exists(FontPath))
             Assert.Inconclusive($"Arial not present at {FontPath}; skipping integration test.");
@@ -157,7 +157,7 @@ public sealed class TextNonSquareAspectTests
         };
 
         var canvas = new NormalTypesettingEngine().Layout(entry, font);
-        var pic = new VectorToIPicture().Convert(canvas, targetW, targetH, transparentBackground: true);
+        var pic = new CPUVectorPictureRasterizer().Convert(canvas, targetW, targetH, transparentBackground: true);
         SaveDiagnosticPng(pic, "square");
 
         var bbox = ScanOpaqueBoundingBox(pic);

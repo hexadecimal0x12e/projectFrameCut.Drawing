@@ -288,8 +288,11 @@ namespace projectFrameCut.Drawing.Base.Picture
 
                 if (HasAlphaChannel && a != null)
                 {
+                    int copyLen = Math.Min(a.Length, Pixels);
                     pic.a = GC.AllocateUninitializedArray<float>(Pixels);
-                    Array.Copy(a, pic.a, Pixels);
+                    Array.Copy(a, pic.a, copyLen);
+                    if (copyLen < Pixels)
+                        Array.Fill(pic.a, 1f, copyLen, Pixels - copyLen);
                 }
                 else
                 {

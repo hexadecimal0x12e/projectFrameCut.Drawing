@@ -178,7 +178,7 @@ namespace projectFrameCut.Drawing.Test.App
                         foreach (var el in fromFile.Elements)
                             Console.WriteLine($"  [{el.LayerIndex}] ({el.RelativeX:F2}, {el.RelativeY:F2}) → {el.Draw().Length} segment(s)");
 
-                        var bitmap = new VectorToIPicture().Convert(canvas, svgWidth, svgHeight, false);
+                        var bitmap = new CPUVectorPictureRasterizer().Convert(canvas, svgWidth, svgHeight, false);
                         var pngPath = Path.Combine(outDir, $"result-{DateTime.Now:yyyyMMddHHmmss}.png");
                         Console.WriteLine($"Saved bitmap from vector canvas: {bitmap.GetDiagnosticsInfo()} to {pngPath}");
                         bitmap.SaveToDisk(pngPath, PictureExtensions.SharedPngPictureEncoder);

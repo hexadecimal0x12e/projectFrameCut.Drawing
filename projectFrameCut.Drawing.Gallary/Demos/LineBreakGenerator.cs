@@ -52,6 +52,7 @@ internal static class LineBreakGenerator
         }
         catch (Exception ex)
         {
+            throw;
             return ($"(error: {ex.Message})", null, null);
         }
     }
