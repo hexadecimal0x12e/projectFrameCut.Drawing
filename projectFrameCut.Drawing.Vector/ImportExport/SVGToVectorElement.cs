@@ -78,9 +78,37 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     scaleY = height;
                 }
 
-                foreach (var segment in element.Draw())
+                var segments = element.Draw();
+                var fillPolys = new List<PolygonVectorSegment>();
+                var strokePolys = new List<PolygonVectorSegment>();
+                var otherSegs = new List<VectorSegment>();
+
+                foreach (var seg in segments)
                 {
-                    var tag = SegmentToSvgTag(segment, ox, oy, scaleX, scaleY);
+                    if (seg is PolygonVectorSegment poly)
+                    {
+                        bool hasFill = poly.FillA > 0f;
+                        bool hasStroke = poly.StrokeA > 0f && poly.Thickness > 0f;
+                        if (hasFill && !hasStroke)
+                            fillPolys.Add(poly);
+                        else if (!hasFill && hasStroke)
+                            strokePolys.Add(poly);
+                        else
+                            otherSegs.Add(seg);
+                    }
+                    else
+                    {
+                        otherSegs.Add(seg);
+                    }
+                }
+
+                if (fillPolys.Count > 0)
+                    sb.Append(MergedPolygonPath(fillPolys, ox, oy, scaleX, scaleY));
+                if (strokePolys.Count > 0)
+                    sb.Append(MergedPolygonPath(strokePolys, ox, oy, scaleX, scaleY));
+                foreach (var seg in otherSegs)
+                {
+                    var tag = SegmentToSvgTag(seg, ox, oy, scaleX, scaleY);
                     if (tag != null)
                         sb.Append(tag);
                 }
@@ -109,6 +137,55 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 PolylineVectorSegment s => PolylineToSvg(s, ox, oy, scaleX, scaleY),
                 _ => null,
             };
+        }
+
+        /// <summary>
+        /// Merge a list of same-style <see cref="PolygonVectorSegment"/>s into a single
+        /// <c>&lt;path&gt;</c> element with multiple sub-paths, avoiding per-segment tag
+        /// and attribute overhead.
+        /// </summary>
+        private static string MergedPolygonPath(List<PolygonVectorSegment> polys,
+            float ox, float oy, float scaleX, float scaleY)
+        {
+            var d = new StringBuilder();
+            foreach (var poly in polys)
+            {
+                AppendContourPath(d, poly.Points, ox, oy, scaleX, scaleY);
+                if (poly.Holes is { Length: > 0 })
+                {
+                    foreach (var hole in poly.Holes)
+                        AppendContourPath(d, hole, ox, oy, scaleX, scaleY);
+                }
+            }
+
+            var first = polys[0];
+            bool isFill = first.FillA > 0f;
+
+            var attrs = new StringBuilder();
+            if (isFill)
+            {
+                attrs.Append($" fill=\"{ColorToHex(first.FillR, first.FillG, first.FillB)}\"");
+                if (first.FillA < 1f)
+                    attrs.Append($" fill-opacity=\"{Fmt(first.FillA)}\"");
+                if (UsePrivateColorSavingMode)
+                    attrs.Append($" fill_projectFrameCut.Drawing.Color=\"{PrivateColorValue(first.FillR, first.FillG, first.FillB, first.FillA)}\"");
+            }
+            else
+            {
+                attrs.Append(" fill=\"none\"");
+            }
+
+            if (first.Thickness > 0f && first.StrokeA > 0f)
+            {
+                attrs.Append($" stroke=\"{ColorToHex(first.StrokeR, first.StrokeG, first.StrokeB)}\"");
+                attrs.Append($" stroke-width=\"{Fmt(first.Thickness)}\"");
+                if (first.StrokeA < 1f)
+                    attrs.Append($" stroke-opacity=\"{Fmt(first.StrokeA)}\"");
+                if (UsePrivateColorSavingMode)
+                    attrs.Append($" stroke_projectFrameCut.Drawing.Color=\"{PrivateColorValue(first.StrokeR, first.StrokeG, first.StrokeB, first.StrokeA)}\"");
+            }
+
+            return $"<path fill-rule=\"evenodd\" d=\"{d}\"{attrs}/>";
         }
 
         private static string CommonAttributes(VectorSegment s)

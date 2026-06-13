@@ -22,7 +22,7 @@ internal static class TextGenerator
                 DebugMode = true
             };
             var vectorCanvas = engine.Layout(entry, font);
-            var picture = VectorToIPicture.Convert(vectorCanvas, width, height, transparentBackground, aaMode);
+            var picture = new CPUVectorPictureRasterizer().Convert(vectorCanvas, width, height, transparentBackground, aaMode);
             return picture.ToImageSource();
         }
         catch (Exception ex)

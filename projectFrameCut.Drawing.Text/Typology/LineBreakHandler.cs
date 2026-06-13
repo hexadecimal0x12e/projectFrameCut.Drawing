@@ -1,6 +1,5 @@
 using projectFrameCut.Drawing.Text.Entry;
 using projectFrameCut.Drawing.Text.FontHelper;
-using projectFrameCut.Drawing.Text.Typology;
 using System.Diagnostics;
 using System.Text;
 
@@ -8,47 +7,223 @@ namespace projectFrameCut.Drawing.Text.Typology
 {
     public static class LineBreakHandler
     {
-        // ──────────────────────────────────────────────
-        //  Font-unit based
-        // ──────────────────────────────────────────────
-
-        /// <summary>
-        /// Break <paramref name="input"/> into lines that fit within
-        /// <paramref name="targetWidth"/> when rendered with <paramref name="targetFont"/>.
-        /// </summary>
-        /// <param name="targetWidth">Available width in font design units (em units),
-        /// i.e. the same unit space as <see cref="FontFace.GetVariedAdvanceWidth"/>.</param>
-        /// <param name="NewLine">Line separator (defaults to <see cref="System.Environment.NewLine"/>).</param>
-        public static string BreakLine(string input, FontFace targetFont, float targetWidth, string? NewLine = null)
+        public static string BreakLatinText(TextEntry entry, FontFace font, float maxWidth, string NewLine = "\n", bool useDashWhenWordAcrossLine = false)
         {
-            NewLine ??= System.Environment.NewLine;
-
-            if (string.IsNullOrEmpty(input) || targetWidth <= 0)
-                return input;
-
-            var result = new StringBuilder();
-            var paragraphs = input.Split('\n');
-
-            for (int p = 0; p < paragraphs.Length; p++)
+            List<string> result = new();
+            var rich = entry as RichTextEntry;
+            string currentLine = "", currentWord = "";
+            float currentLineWidth = 0f;
+            float spaceAdvanceWidth = font.GetVariedAdvanceWidth(font.GetGlyphIndex(' ')) * (entry.FontSize / font.UnitsPerEm);
+            var targetWidth = maxWidth;
+            var dashWidth = useDashWhenWordAcrossLine ? (entry.CharacterSpacing + (font.GetVariedAdvanceWidth(font.GetGlyphIndex('-')) * (entry.FontSize / font.UnitsPerEm))) : 0;
+            for (int i = 0; i < entry.Text.Length; i++)
             {
-                if (p > 0)
-                    result.Append(NewLine);
+                char item = entry.Text[i];
+                currentWord += item;
+                float charFontSize = entry.FontSize;
+                float charCharSpacing = entry.CharacterSpacing;
+                float charWordSpacing = entry.WordSpacing;
+                var charVariationAxes = entry.VariationAxes;
 
-                string para = paragraphs[p];
-                int n = para.Length;
-                var widths = new float[n];
-                for (int i = 0; i < n; i++)
-                    widths[i] = targetFont.GetVariedAdvanceWidth(targetFont.GetGlyphIndex(para[i]));
+                if (rich is not null)
+                {
+                    foreach (var range in rich.GetRangesAt(i))
+                    {
+                        var s = range.Style;
+                        if (s.FontSize.HasValue) charFontSize = s.FontSize.Value;
+                        if (s.CharacterSpacing.HasValue) charCharSpacing = s.CharacterSpacing.Value;
+                        if (s.WordSpacing.HasValue) charWordSpacing = s.WordSpacing.Value;
+                        if (s.VariationAxes is not null) charVariationAxes = s.VariationAxes;
+                    }
+                }
 
-                BreakParagraphCore(para, widths, targetWidth, result, NewLine);
+                float width = 0f;
+
+                if (item == ' ' && string.IsNullOrWhiteSpace(currentLine))
+                {
+                    currentWord = "";
+                    continue;
+                }
+                else if (item == ' ')
+                {
+                    // Mirror the rendering: scale the pre-measured space advance
+                    // by the per-character FontSize (rich text may override the
+                    // size of a space inside a range) and include
+                    // CharacterSpacing in the width.
+                    float spaceScale = charFontSize / entry.FontSize;
+                    width = spaceAdvanceWidth * spaceScale + charWordSpacing + charCharSpacing;
+                    currentWord = "";
+                }
+                else if (item == '\n')
+                {
+                    width = 0f;
+                    result.Add(currentLine);
+                    currentLine = "";
+                    currentWord = "";
+                    continue;
+                }
+                else
+                {
+                    // Must mirror NormalTypesettingEngine.LayoutLine: apply the
+                    // current variation axes BEFORE reading the advance,
+                    // otherwise GetVariedAdvanceWidth silently falls back to
+                    // the unvaried hmtx value and the line breaker's width
+                    // estimate disagrees with the rendered cursor position.
+                    if (font.IsVariableFont && charVariationAxes.Count > 0)
+                        font.SetVariationAxes(charVariationAxes);
+
+                    width = charCharSpacing + (font.GetVariedAdvanceWidth(font.GetGlyphIndex(item)) * (charFontSize / font.UnitsPerEm));
+                    if (width < charFontSize * 0.1f)
+                        width = charFontSize * 0.5f;
+                }
+
+                if (width + currentLineWidth <= targetWidth - dashWidth || (width + currentLineWidth > (targetWidth - dashWidth) && char.IsPunctuation(item)))
+                {
+                    currentLine += item;
+                    currentLineWidth += width;
+                }
+                else
+                {
+                    Debug.WriteLine($"Line break: current width {width + currentLineWidth} of {targetWidth}, content '{currentLine}', word '{currentWord}', char '{item}'");
+                    if (item != ' ' && useDashWhenWordAcrossLine)
+                    {
+                        // Apply variation axes before reading the dash's advance
+                        // so the dash width estimate matches the rendered cursor
+                        // (mirrors the measurement done for the current
+                        // character above).
+                        if (font.IsVariableFont && charVariationAxes.Count > 0)
+                            font.SetVariationAxes(charVariationAxes);
+
+                        // Append a hyphen to the END of the current line (i.e.
+                        // after the last char that DID fit) and start a new line
+                        // with the overflowing char. The original code appended
+                        // `{item}-` to the current line, which pushed the dash
+                        // past the right margin; a stricter check that added
+                        // `currentLineWidth + width` made this branch
+                        // unreachable, since the outer else already implies
+                        // `width + currentLineWidth + dashWidth > targetWidth`.
+                        // The correct fit test is therefore just whether the
+                        // current line has room left for the dash itself —
+                        // `item` will start a fresh line.
+                        if (currentLineWidth + (charCharSpacing + (font.GetVariedAdvanceWidth(font.GetGlyphIndex('-')) * (charFontSize / font.UnitsPerEm))) <= targetWidth && i + 1 <= entry.Text.Length - 1 && entry.Text[i + 1] != ' ')
+                        {
+                            currentLine += "-";
+                            result.Add(currentLine);
+                            currentLine = item.ToString();
+                            currentLineWidth = width;
+                            currentWord = item.ToString();
+                            continue;
+                        }
+                        else
+                        {
+                            currentLine = currentLine.Substring(0, currentLine.Length - currentWord.Length);
+                            result.Add(currentLine);
+                            currentLine = "";
+                            i -= currentWord.Length;
+                            currentWord = "";
+                            currentLineWidth = 0;
+                        }
+                    }
+                    else
+                    {
+                        currentLine = currentLine.Substring(0, currentLine.Length - currentWord.Length);
+                        result.Add(currentLine);
+                        currentLine = "";
+                        i -= currentWord.Length;
+                        currentWord = "";
+                        currentLineWidth = 0;
+
+                    }
+                }
             }
 
-            return result.ToString();
+            if (!string.IsNullOrWhiteSpace(currentLine)) result.Add(currentLine);
+            return string.Join(NewLine, result);
         }
 
-        // ──────────────────────────────────────────────
-        //  Canvas-space based (TextEntry / RichTextEntry)
-        // ──────────────────────────────────────────────
+        public static string BreakCJKText(TextEntry entry, FontFace font, float maxWidth, string NewLine = "\n", bool allowPunctuationOverflowMaxWidth = false)
+        {
+            List<string> result = new();
+            var rich = entry as RichTextEntry;
+            string currentLine = "";
+            float currentLineWidth = 0f;
+            float spaceAdvanceWidth = font.GetVariedAdvanceWidth(font.GetGlyphIndex(' ')) * (entry.FontSize / font.UnitsPerEm);
+
+            for (int i = 0; i < entry.Text.Length; i++)
+            {
+                char item = entry.Text[i];
+                float charFontSize = entry.FontSize;
+                float charCharSpacing = entry.CharacterSpacing;
+                float charWordSpacing = entry.WordSpacing;
+                var charVariationAxes = entry.VariationAxes;
+
+                if (rich is not null)
+                {
+                    foreach (var range in rich.GetRangesAt(i))
+                    {
+                        var s = range.Style;
+                        if (s.FontSize.HasValue) charFontSize = s.FontSize.Value;
+                        if (s.CharacterSpacing.HasValue) charCharSpacing = s.CharacterSpacing.Value;
+                        if (s.WordSpacing.HasValue) charWordSpacing = s.WordSpacing.Value;
+                        if (s.VariationAxes is not null) charVariationAxes = s.VariationAxes;
+                    }
+                }
+
+                float advanceWidth;
+
+                if (item == ' ' && string.IsNullOrWhiteSpace(currentLine)) continue;
+                else if (item == ' ')
+                {
+                    float spaceScale = charFontSize / entry.FontSize;
+                    advanceWidth = spaceAdvanceWidth * spaceScale + charWordSpacing + charCharSpacing;
+                }
+                else if (item == '\n')
+                {
+                    result.Add(currentLine);
+                    currentLine = "";
+                    currentLineWidth = 0f;
+                    continue;
+                }
+                else
+                {
+                    if (font.IsVariableFont && charVariationAxes.Count > 0)
+                        font.SetVariationAxes(charVariationAxes);
+
+                    ushort glyphIndex = font.GetGlyphIndex(item);
+                    advanceWidth = charCharSpacing + (font.GetVariedAdvanceWidth(glyphIndex) * (charFontSize / font.UnitsPerEm));
+                    if (advanceWidth < charFontSize * 0.1f)
+                        advanceWidth = charFontSize * 0.5f;
+                }
+
+                if (currentLineWidth + advanceWidth > maxWidth)
+                {
+                    // CJK allows punctuation to slightly overflow the margin
+                    if (char.IsPunctuation(item) && allowPunctuationOverflowMaxWidth)
+                    {
+                        currentLine += item;
+                        result.Add(currentLine);
+                        currentLine = "";
+                        currentLineWidth = 0f;
+                        continue;
+                    }
+
+                    if (currentLine.Length > 0)
+                    {
+                        result.Add(currentLine);
+                        currentLine = "";
+                        currentLineWidth = 0f;
+                        i--;
+                        continue;
+                    }
+                }
+
+                currentLine += item;
+                currentLineWidth += advanceWidth;
+            }
+
+            if (!string.IsNullOrWhiteSpace(currentLine)) result.Add(currentLine);
+            return string.Join(NewLine, result);
+        }
 
         /// <summary>
         /// Break the text from <paramref name="entry"/> into lines that fit within
@@ -56,153 +231,22 @@ namespace projectFrameCut.Drawing.Text.Typology
         /// Supports <see cref="RichTextEntry"/> per-character font-size and
         /// spacing overrides.
         /// </summary>
-        public static string BreakLine(TextEntry entry, FontFace font, float targetWidth, string? NewLine = null)
+        public static string BreakLine(TextEntry entry, FontFace font, float targetWidth, string NewLine = "\n", bool useDashWhenWordAcrossLineInLatin = false, bool allowPunctuationOverflowMaxWidthInCJK = false)
         {
-            NewLine ??= System.Environment.NewLine;
-
             if (string.IsNullOrEmpty(entry.Text) || targetWidth <= 0)
                 return entry.Text;
 
-            var result = new StringBuilder();
-            var paragraphs = entry.Text.Split('\n');
-            var rich = entry as RichTextEntry;
-
-            // Base space advance in canvas space.
-            ushort spaceGlyphIndex = font.GetGlyphIndex(' ');
-            float spaceAdvanceWidth = font.GetVariedAdvanceWidth(spaceGlyphIndex) *
-                                      (entry.FontSize / font.UnitsPerEm);
-
-            for (int p = 0; p < paragraphs.Length; p++)
+            // Chinese or Japanese need special way to process as they don't have space between words
+            if (entry.Text.Any(c => (c >= '一' && c <= 0x9FFF) || (c >= 'ぁ' && c <= 'ゟ') || (c >= '゠' && c <= 'ヿ')))
             {
-                if (p > 0)
-                    result.Append(NewLine);
-
-                string para = paragraphs[p];
-                int n = para.Length;
-                var widths = new float[n];
-                for (int i = 0; i < n; i++)
-                {
-                    char c = para[i];
-
-                    float charFontSize = entry.FontSize;
-                    float charCharSpacing = entry.CharacterSpacing;
-                    float charWordSpacing = entry.WordSpacing;
-                    var charVariationAxes = entry.VariationAxes;
-
-                    if (rich is not null)
-                    {
-                        foreach (var range in rich.GetRangesAt(i))
-                        {
-                            var s = range.Style;
-                            if (s.FontSize.HasValue) charFontSize = s.FontSize.Value;
-                            if (s.CharacterSpacing.HasValue) charCharSpacing = s.CharacterSpacing.Value;
-                            if (s.WordSpacing.HasValue) charWordSpacing = s.WordSpacing.Value;
-                            if (s.VariationAxes is not null) charVariationAxes = s.VariationAxes;
-                        }
-                    }
-
-                    if (c == ' ')
-                    {
-                        float spaceScale = charFontSize / entry.FontSize;
-                        widths[i] = spaceAdvanceWidth * spaceScale + charWordSpacing + charCharSpacing;
-                    }
-                    else
-                    {
-                        if (font.IsVariableFont && charVariationAxes.Count > 0)
-                            font.SetVariationAxes(charVariationAxes);
-
-                        // Reuse the same advance formula as the rendering engine
-                        // (NormalTypesettingEngine.ComputeCharacterAdvance) so line
-                        // breaking decisions match the cursor positions used at render
-                        // time — otherwise a wrap point chosen here can disagree with
-                        // the rendered layout.
-                        ushort glyphIndex = font.GetGlyphIndex(c);
-                        widths[i] = NormalTypesettingEngine.ComputeCharacterAdvance(
-                            font, glyphIndex, charFontSize, charCharSpacing);
-                    }
-                }
-
-                BreakParagraphCore(para, widths, targetWidth, result, NewLine);
+                return BreakCJKText(entry, font, targetWidth, NewLine, allowPunctuationOverflowMaxWidthInCJK);
             }
-
-            return result.ToString();
-        }
-
-        // ──────────────────────────────────────────────
-        //  Core greedy line-breaking algorithm
-        // ──────────────────────────────────────────────
-
-        private static void BreakParagraphCore(
-            string paragraph, float[] widths, float targetWidth,
-            StringBuilder result, string newLine)
-        {
-            int n = paragraph.Length;
-
-            int lineStart = 0;
-            int lastBreakIdx = -1;   // last space position in the current line
-            float currentWidth = 0;
-            bool needNewLine = false;
-
-            for (int i = 0; i < n; i++)
+            else
             {
-                float charWidth = widths[i];
-
-                if (currentWidth + charWidth > targetWidth)
-                {
-                    if (lastBreakIdx >= lineStart)
-                    {
-                        // Backtrack to the last space — break there.
-                        if (needNewLine) result.Append(newLine);
-                        result.Append(paragraph, lineStart, lastBreakIdx - lineStart);
-                        needNewLine = true;
-
-                        lineStart = lastBreakIdx + 1;
-                        currentWidth = 0;
-                        lastBreakIdx = -1;
-                        for (int j = lineStart; j <= i; j++)
-                        {
-                            currentWidth += widths[j];
-                            if (paragraph[j] == ' ')
-                                lastBreakIdx = j;
-                        }
-                    }
-                    else if (i > lineStart)
-                    {
-                        // No space to backtrack — break at the current character.
-                        if (needNewLine) result.Append(newLine);
-                        result.Append(paragraph, lineStart, i - lineStart);
-                        needNewLine = true;
-
-                        lineStart = i;
-                        currentWidth = charWidth;
-                        lastBreakIdx = paragraph[i] == ' ' ? i : -1;
-                    }
-                    else
-                    {
-                        // Single character wider than targetWidth — emit it anyway.
-                        if (needNewLine) result.Append(newLine);
-                        result.Append(paragraph[i]);
-                        needNewLine = true;
-
-                        lineStart = i + 1;
-                        currentWidth = 0;
-                        lastBreakIdx = -1;
-                    }
-                }
-                else
-                {
-                    currentWidth += charWidth;
-                    if (paragraph[i] == ' ')
-                        lastBreakIdx = i;
-                }
-            }
-
-            // Flush remaining segment.
-            if (lineStart < n)
-            {
-                if (needNewLine) result.Append(newLine);
-                result.Append(paragraph, lineStart, n - lineStart);
+                return BreakLatinText(entry, font, targetWidth, NewLine, useDashWhenWordAcrossLineInLatin);
             }
         }
+
+
     }
 }

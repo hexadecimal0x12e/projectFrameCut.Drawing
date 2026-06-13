@@ -63,9 +63,9 @@ public class VectorRenderBenchmarks : BenchmarkBase{
 
     [Benchmark(Description = "Render simple vector (2 shapes)")]
     public IPicture RenderSimple() =>
-        VectorToIPicture.Convert(_simpleVector, OutputSize.Width, OutputSize.Height, false);
+        new CPUVectorPictureRasterizer().Convert(_simpleVector, OutputSize.Width, OutputSize.Height, false);
 
     [Benchmark(Description = "Render complex vector (50 shapes)")]
     public IPicture RenderComplex() =>
-        VectorToIPicture.Convert(_complexVector, OutputSize.Width, OutputSize.Height, false);
+        new CPUVectorPictureRasterizer().Convert(_complexVector, OutputSize.Width, OutputSize.Height, false);
 }

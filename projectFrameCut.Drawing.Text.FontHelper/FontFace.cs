@@ -80,6 +80,10 @@ public sealed class FontFace : IDisposable
         _variation = sfnt.HasTable("fvar")
             ? new VariationEngine(this, sfnt)
             : null;
+
+        if (_cff is not null && !(AppContext.TryGetSwitch("projectFrameCut.Drawing.EnableCFFBasedOtfFont", out var cffEnabled) && cffEnabled))
+            throw new InvalidFontFileException("projectFrameCut.Drawing have some issue on CFF-based OTF fonts and they've not supported in this build. If you still want to use it, define the AppContext switch 'projectFrameCut.Drawing.EnableCFFBasedOtfFont' to true.");
+
     }
 
     /// <summary>Load a font face from a file path.</summary>
@@ -102,23 +106,26 @@ public sealed class FontFace : IDisposable
 
     /// <summary>Auto-detect and load fonts from a file path (supports .ttf, .otf, .ttc).</summary>
     public static FontFace[] AutoLoad(string path)
-        => AutoLoad(File.ReadAllBytes(path));
+        => AutoLoad(File.ReadAllBytes(path), Path.GetExtension(path).ToLower());
 
     /// <summary>Auto-detect and load fonts from raw data (supports TTF, OTF, TTC).</summary>
-    public static FontFace[] AutoLoad(byte[] data)
+    /// <param name="preferExtension">The preferred file extension to prioritize during auto-detection. Keep empty to auto-detect.</param>
+    public static FontFace[] AutoLoad(byte[] data, string preferExtension = "")
     {
-        List<FontFace> fonts = new();
         bool ttfSeen = false, ttcSeen = false;
+        if (preferExtension == ".ttc") goto ttc;
+        else if (preferExtension == ".otf" || preferExtension == ".ttf") goto ttf;
     ttf:
         try
         {
             ttfSeen = true;
-            return new[] { Load(data) };
+            var f = Load(data);
+            return [f];
         }
-        catch
+        catch (Exception ex)
         {
             if (!ttcSeen) goto ttc;
-            else if(!ttfSeen) throw;
+            else if (!ttfSeen) throw new InvalidDataException("Data is not a valid TTF or TTC or OTF font.", ex);
         }
     ttc:
         try
@@ -126,12 +133,13 @@ public sealed class FontFace : IDisposable
             ttcSeen = true;
             return FontCollection.Load(data).Select(C => C.Load()).ToArray();
         }
-        catch
+        catch (Exception ex)
         {
             if (!ttfSeen) goto ttf;
-            else if(!ttcSeen) throw;
+            else if (!ttcSeen) throw new InvalidDataException("Data is not a valid TTF or TTC or OTF font.", ex);
         }
-        throw new InvalidDataException("Data is not a valid TTF or TTC font.");
+
+        throw new InvalidDataException("Data is not a valid TTF or TTC or OTF font.");
     }
 
 
@@ -378,6 +386,80 @@ public sealed class FontFace : IDisposable
     /// <summary>Get the advance width for a glyph.</summary>
     public ushort GetAdvanceWidth(ushort glyphIndex) =>
         _hmtx.GetAdvanceWidth(glyphIndex);
+
+    /// <summary>
+    /// Fast retrieval of a glyph's bounding box (in font design units) without
+    /// parsing the full contour data.  Returns <c>false</c> for empty or missing
+    /// glyphs.
+    /// </summary>
+    /// <remarks>
+    /// For TrueType outlines the bounding box is read directly from the 10-byte
+    /// glyph header.  For CFF-based fonts the full glyph is parsed because CFF
+    /// charstrings do not carry a header-level bbox.
+    /// </remarks>
+    public bool TryGetGlyphBounds(
+        ushort glyphIndex,
+        out short xMin, out short yMin, out short xMax, out short yMax)
+    {
+        xMin = yMin = xMax = yMax = 0;
+
+        if (glyphIndex >= _maxp.NumGlyphs)
+            return false;
+
+        // CFF-based font — no header-level bbox; fall back to full parse
+        if (_cff is not null)
+        {
+            Glyph? glyph = _cff.ParseGlyph(glyphIndex);
+            if (glyph is null || glyph.IsEmpty)
+                return false;
+            xMin = glyph.XMin;
+            yMin = glyph.YMin;
+            xMax = glyph.XMax;
+            yMax = glyph.YMax;
+            return true;
+        }
+
+        // TrueType-based font — read the 10-byte glyph header
+        if (_loca is null || _glyfData is null)
+            return false;
+
+        uint offset = _loca.Value.GetGlyphOffset(glyphIndex);
+        uint length = _loca.Value.GetGlyphLength(glyphIndex);
+        if (length < 10 || offset + length > (uint)_glyfData.Length)
+            return false;
+
+        int headerOffset = (int)offset;
+        short numberOfContours = BigEndianReader.ReadInt16(_glyfData, ref headerOffset);
+        if (numberOfContours == 0)
+            return false;
+
+        xMin = BigEndianReader.ReadInt16(_glyfData, ref headerOffset);
+        short rawYMin = BigEndianReader.ReadInt16(_glyfData, ref headerOffset);
+        xMax = BigEndianReader.ReadInt16(_glyfData, ref headerOffset);
+        short rawYMax = BigEndianReader.ReadInt16(_glyfData, ref headerOffset);
+
+        // Y-flip to image space (Y-down)
+        yMin = (short)(-rawYMax);
+        yMax = (short)(-rawYMin);
+
+        return true;
+    }
+
+
+    public ushort GetAdvanceWidthViaBounds(ushort glyphIndex)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (TryGetGlyphBounds(glyphIndex, out var xMin, out _, out var xMax, out _))
+        {
+            return (ushort)Math.Max(0, xMax - xMin);
+        }
+        else
+        {
+            return GetAdvanceWidth(glyphIndex);
+        }
+    }
+
 
     // ── IDisposable ──
 

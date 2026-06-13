@@ -3,6 +3,7 @@ using projectFrameCut.Drawing.Text.Entry;
 using projectFrameCut.Drawing.Text.FontHelper;
 using projectFrameCut.Drawing.Text.FontHelper.Table;
 using projectFrameCut.Drawing.Vector;
+using System.Diagnostics;
 
 namespace projectFrameCut.Drawing.Text.Typology;
 
@@ -45,6 +46,11 @@ public class NormalTypesettingEngine : ITypesettingEngine
     public bool DebugMode { get; set; }
 
     /// <summary>
+    /// When <c>true</c>, each rendered glyph also gets a gray box with size 1emx1em.
+    /// </summary>
+    public bool ShowEMBox { get; set; }
+
+    /// <summary>
     /// When <c>true</c>, <see cref="DumpCharAdvance"/> writes one line per
     /// character to the debug/console output during <see cref="Layout"/> and
     /// <see cref="Measure"/>. Used to diagnose unexpected advance widths.
@@ -70,7 +76,7 @@ public class NormalTypesettingEngine : ITypesettingEngine
         float lineHeight = entry.FontSize * (1f + entry.LineSpacing);
 
         ushort spaceGlyphIndex = font.GetGlyphIndex(' ');
-        float spaceAdvanceWidth = font.GetAdvanceWidth(spaceGlyphIndex) *
+        float spaceAdvanceWidth = font.GetVariedAdvanceWidth(spaceGlyphIndex) *
                                   (entry.FontSize / font.UnitsPerEm);
 
         var lines = entry.Text.Split('\n');
@@ -107,18 +113,26 @@ public class NormalTypesettingEngine : ITypesettingEngine
         float lineHeight = entry.FontSize * (1f + entry.LineSpacing);
 
         ushort spaceGlyphIndex = font.GetGlyphIndex(' ');
-        float spaceAdvanceWidth = font.GetAdvanceWidth(spaceGlyphIndex) *
+        float spaceAdvanceWidth = font.GetVariedAdvanceWidth(spaceGlyphIndex) *
                                   (entry.FontSize / font.UnitsPerEm);
 
         var rich = entry as RichTextEntry;
         var lines = entry.Text.Split('\n');
         float maxWidth = 0f;
 
-        foreach (var line in lines)
+        float? overallMinY = null;
+        float? overallMaxY = null;
+
+        for (int lineIdx = 0; lineIdx < lines.Length; lineIdx++)
         {
+            var line = lines[lineIdx];
             if (line.Length == 0) continue;
 
-            float lineWidth = 0f;
+            float baselineY = lineIdx * lineHeight;
+            float cursorX = 0f;
+            float? firstVisualLeft = null;
+            float lastVisualRight = 0f;
+
             for (int i = 0; i < line.Length; i++)
             {
                 char c = line[i];
@@ -156,18 +170,43 @@ public class NormalTypesettingEngine : ITypesettingEngine
                     if (rFont.IsVariableFont && charVariationAxes.Count > 0)
                         rFont.SetVariationAxes(charVariationAxes);
 
+                    // Retrieve the actual glyph bounding box so we can compute
+                    // the visual extent of the line — this eliminates the gap
+                    // that advance-width-based measurement introduces at both
+                    // ends of the line (left-/right-side bearing).
+                    if (rFont.TryGetGlyphBounds(rIdx, out short gxMin, out short gyMin, out short gxMax, out short gyMax))
+                    {
+                        float s = charFontSize / rFont.UnitsPerEm;
+                        float vLeft = cursorX + gxMin * s;
+                        float vRight = cursorX + gxMax * s;
+                        float vTop = baselineY + gyMin * s;
+                        float vBottom = baselineY + gyMax * s;
+
+                        if (!firstVisualLeft.HasValue)
+                            firstVisualLeft = vLeft;
+                        lastVisualRight = vRight;
+
+                        if (!overallMinY.HasValue || vTop < overallMinY.Value) overallMinY = vTop;
+                        if (!overallMaxY.HasValue || vBottom > overallMaxY.Value) overallMaxY = vBottom;
+                    }
+
                     charAdvance = ComputeCharacterAdvance(rFont, rIdx, charFontSize, charCharSpacing);
                     DumpCharAdvance(i, "Measure", c, rFont, rIdx,
                         charFontSize, charCharSpacing, charAdvance);
                 }
-                lineWidth += charAdvance;
+                cursorX += charAdvance;
             }
 
-            if (lineWidth > maxWidth)
-                maxWidth = lineWidth;
+            float visualLineWidth = firstVisualLeft.HasValue
+                ? lastVisualRight - firstVisualLeft.Value
+                : cursorX;
+            if (visualLineWidth > maxWidth)
+                maxWidth = visualLineWidth;
         }
 
-        float totalHeight = lines.Length * lineHeight;
+        float totalHeight = overallMinY.HasValue
+            ? overallMaxY!.Value - overallMinY.Value
+            : lines.Length * lineHeight;
         return (maxWidth, totalHeight);
     }
 
@@ -196,7 +235,7 @@ public class NormalTypesettingEngine : ITypesettingEngine
             if (idx != 0)
                 return (fb, idx);
         }
-
+        Debug.WriteLine($"Cannot resolve '{c}' (U+{(int)c:X4}) in primary or fallback fonts; using .notdef tofu.");
         return (primaryFont, primaryFont.GetGlyphIndex(c));
     }
 
@@ -426,7 +465,7 @@ public class NormalTypesettingEngine : ITypesettingEngine
                 if (strokeThickness > 0f && strokeA > 0f)
                     element.WithStroke(strokeR, strokeG, strokeB, strokeA, strokeThickness);
                 
-                element.WithShowEmBox(DebugMode);
+                element.WithShowEmBox(DebugMode || ShowEMBox);
                 result.Elements.Add(element);
             }
 

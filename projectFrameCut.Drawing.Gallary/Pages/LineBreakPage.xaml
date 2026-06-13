@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="projectFrameCut.Drawing.Gallary.Pages.LineBreakPage"
+             Title="Line Break">
+
+    <ScrollView x:Name="MainScroll" VerticalScrollBarVisibility="Always">
+        <VerticalStackLayout Spacing="12" Padding="16">
+
+            <!-- Header -->
+            <Label Text="Line Break" FontSize="24" FontAttributes="Bold" />
+            <Label Text="LineBreakHandler 自动折行算法 · 基于字符宽度在指定宽度处断行"
+                   FontSize="14" TextColor="Gray" Margin="0,0,0,4" />
+
+            <!-- Font Selection -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="选择字体" FontSize="16" FontAttributes="Bold" />
+                    <Picker x:Name="FontPicker" Title="选择一个字体..."
+                            SelectedIndexChanged="OnFontSelected" FontSize="14" />
+                    <Label x:Name="FontCountLabel" Text="正在扫描系统字体..."
+                           FontSize="12" TextColor="Gray" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Text Input -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="输入文本" FontSize="16" FontAttributes="Bold" />
+                    <Editor x:Name="InputText" Text="The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs."
+                           FontSize="14" Placeholder="输入要折行的文本..." HeightRequest="100" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Parameters -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="折行参数" FontSize="16" FontAttributes="Bold" />
+
+                    <Grid ColumnDefinitions="70,*,55" RowDefinitions="Auto" Margin="0,2">
+                        <Label Text="目标宽度" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderTargetWidth" Grid.Column="1"
+                                Minimum="0.05" Maximum="0.9" Value="0.35"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelTargetWidth" Grid.Column="2"
+                               Text="0.35" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="70,*,55" Margin="0,2">
+                        <Label Text="字号" VerticalOptions="Center" FontSize="13" />
+                        <Slider x:Name="SliderFontSize" Grid.Column="1"
+                                Minimum="0.02" Maximum="0.3" Value="0.08"
+                                ValueChanged="OnSliderChanged" />
+                        <Label x:Name="LabelFontSize" Grid.Column="2"
+                               Text="0.08" VerticalOptions="Center"
+                               HorizontalTextAlignment="End" FontSize="12" />
+                    </Grid>
+
+                    <HorizontalStackLayout Spacing="8">
+                        <Label Text="使用连字符" VerticalOptions="Center" FontSize="13" />
+                        <Switch x:Name="useDashWhenWordAcrossLineInLatin" IsToggled="False" />
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="8">
+                        <Label Text="允许标点符号溢出" VerticalOptions="Center" FontSize="13" />
+                        <Switch x:Name="allowPunctuationOverflowMaxWidthInCJK" IsToggled="False" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Action -->
+            <Button x:Name="BreakButton"
+                    Text="断行 &amp; 渲染" FontSize="16"
+                    BackgroundColor="#007AFF" TextColor="White"
+                    Clicked="OnBreakClicked"
+                    HeightRequest="44" CornerRadius="8" />
+
+            <!-- Broken Text Display -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="断行结果" FontSize="16" FontAttributes="Bold" />
+                    <Border StrokeShape="RoundRectangle 4" Padding="10"
+                            BackgroundColor="{AppThemeBinding Light=#F5F5F5, Dark=#2C2C2E}">
+                        <ScrollView Orientation="Both" HeightRequest="120">
+                            <Label x:Name="BrokenTextDisplay" Text="(点击按钮查看结果)"
+                                   FontSize="13" FontFamily="Consolas" />
+                        </ScrollView>
+                    </Border>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Preview -->
+            <Border StrokeShape="RoundRectangle 8" Padding="12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="渲染预览" FontSize="16" FontAttributes="Bold" />
+                    <Label Text="灰色竖线标记目标宽度的边界位置"
+                           FontSize="12" TextColor="Gray" />
+                    <ActivityIndicator x:Name="Spinner" IsRunning="True"
+                                       HorizontalOptions="Center" HeightRequest="40" />
+                    <Image x:Name="DemoImage" IsVisible="False"
+                           HorizontalOptions="Center" MaximumHeightRequest="500">
+                        <Image.GestureRecognizers>
+                            <TapGestureRecognizer NumberOfTapsRequired="2"
+                                                  Tapped="OnPreviewDoubleTapped" />
+                        </Image.GestureRecognizers>
+                    </Image>
+                </VerticalStackLayout>
+            </Border>
+
+            <Label Text="LineBreakHandler 使用贪心算法（greedy algorithm）在空白字符处断行并回退，确保每行宽度不超过目标宽度。支持 font-unit 和 canvas-space 两种坐标空间。"
+                   FontSize="12" TextColor="Gray" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

@@ -40,7 +40,7 @@ public sealed class TextOrientationTests
         };
 
         var canvas = new NormalTypesettingEngine().Layout(entry, font);
-        var pic = VectorToIPicture.Convert(canvas, targetW, targetH, transparentBackground: true);
+        var pic = new CPUVectorPictureRasterizer().Convert(canvas, targetW, targetH, transparentBackground: true);
 
         var bbox = ScanOpaqueBoundingBox(pic);
         Assert.IsTrue(bbox.HasValue, "No text pixels were rendered.");
@@ -111,7 +111,7 @@ public sealed class TextOrientationTests
 
     private static (int x0, int y0, int x1, int y1)? ScanOpaqueBoundingBox(IPicture pic)
     {
-        var alpha = pic.GetSpecificChannel<float>(IPicture.ChannelId.Alpha)
+        var alpha = pic.GetSpecificChannel(IPicture.ChannelId.Alpha) as float[]
                     ?? throw new InvalidOperationException("Picture has no alpha channel.");
         int w = pic.Width, h = pic.Height;
         int x0 = w, y0 = h, x1 = -1, y1 = -1;

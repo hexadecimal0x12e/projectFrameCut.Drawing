@@ -6,6 +6,7 @@ using projectFrameCut.Drawing.Text.FontHelper;
 using projectFrameCut.Drawing.Text.Typology;
 using projectFrameCut.Drawing.Vector;
 using projectFrameCut.Drawing.Vector.ImportExport;
+using System.Diagnostics;
 using DrawTextAlignment = projectFrameCut.Drawing.Text.Entry.TextAlignment;
 using DrawTextDecoration = projectFrameCut.Drawing.Text.Entry.TextDecoration;
 
@@ -243,7 +244,12 @@ public partial class TextPage : ContentPage
                     vectorCanvas = engine.Layout(renderEntry, selected);
                 }
 
-                var picture = VectorToIPicture.Convert(vectorCanvas, width, height, transparent, aaMode);
+                var svg = SVGToVectorElement.ExportToSvg(vectorCanvas, width, height);
+                var tmpPath = Path.Combine(FileSystem.CacheDirectory, $"debug_{DateTime.Now:yyyyMMdd_HHmmss}.svg");
+                Debug.WriteLine($"SVG output saved to: {tmpPath}");
+                File.WriteAllText(tmpPath, svg);
+
+                var picture = new CPUVectorPictureRasterizer().Convert(vectorCanvas, width, height, transparent, aaMode);
 
                 using var ms = new MemoryStream();
                 var encoder = new PngPictureEncoder();

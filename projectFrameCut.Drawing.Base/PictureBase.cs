@@ -87,13 +87,6 @@ namespace projectFrameCut.Drawing.Base
         object? GetSpecificChannel(ChannelId channelId);
 
         /// <summary>
-        /// Get a specific channel's data.
-        /// </summary>
-        /// <param name="channelId">The channel want to get</param>
-        /// <returns>the data.</returns>
-        T[]? GetSpecificChannel<T>(ChannelId channelId) => GetSpecificChannel(channelId) is T[] ret ? ret : throw new InvalidCastException("The channel data type does not match the requested type.");
-
-        /// <summary>
         /// Get the diagnostics information of this picture.
         /// </summary>
         /// <returns>The Diagnostics info</returns>

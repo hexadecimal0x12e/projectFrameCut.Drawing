@@ -12,5 +12,6 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(nameof(BlendPage), typeof(BlendPage));
         Routing.RegisterRoute(nameof(VectorPage), typeof(VectorPage));
         Routing.RegisterRoute(nameof(TextPage), typeof(TextPage));
+        Routing.RegisterRoute(nameof(LineBreakPage), typeof(LineBreakPage));
     }
 }

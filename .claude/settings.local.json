@@ -16,7 +16,8 @@
       "PowerShell(Select-String -Pattern \"error|Error|错误\")",
       "Bash(dir *)",
       "WebFetch(domain:www.nuget.org)",
-      "PowerShell(Stop-Process *)"
+      "PowerShell(Stop-Process *)",
+      "Bash(git log *)"
     ],
     "deny": [
       "Bash(Select-*)",

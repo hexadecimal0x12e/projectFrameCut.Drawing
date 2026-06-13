@@ -1,19 +1,23 @@
 using projectFrameCut.Drawing.Base;
 using projectFrameCut.Drawing.Base.Picture;
-using projectFrameCut.Drawing.Vector;
 
 namespace projectFrameCut.Drawing.Vector.ImportExport
 {
-    /// <summary>Renders a <see cref="VectorPicture"/> to a raster <see cref="IPicture"/> using CPU scanline rendering.</summary>
-    public class VectorToIPicture
+    public interface IVectorPictureRasterizer
     {
-        private readonly ushort[] _r;
-        private readonly ushort[] _g;
-        private readonly ushort[] _b;
-        private readonly float[] _a;
-        private readonly int _width;
-        private readonly int _height;
-        private readonly int _pixels;
+        IPicture Convert(VectorPicture canvas, int width, int height, bool transparentBackground = false, AntiAliasMode aaMode = AntiAliasMode.None, CancellationToken cancellationToken = default);
+    }
+
+    /// <summary>Renders a <see cref="VectorPicture"/> to a raster <see cref="IPicture"/> using CPU scanline rendering.</summary>
+    public class CPUVectorPictureRasterizer : IVectorPictureRasterizer
+    {
+        private ushort[] _r;
+        private ushort[] _g;
+        private ushort[] _b;
+        private float[] _a;
+        private int _width;
+        private int _height;
+        private int _pixels;
 
         // Per-element X/Y scales used to map normalized segment coordinates to pixels.
         // Defaults are the canvas dimensions; elements with UseUniformScale set override
@@ -22,29 +26,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // still drives clamping and pixel indexing.
         private float _scaleX;
         private float _scaleY;
-        private readonly AntiAliasMode _aaMode;
-
-        private VectorToIPicture(int width, int height, bool transparentBackground = false, AntiAliasMode aaMode = AntiAliasMode.None)
-        {
-            _width = width;
-            _height = height;
-            _pixels = width * height;
-            _r = new ushort[_pixels];
-            _g = new ushort[_pixels];
-            _b = new ushort[_pixels];
-            _a = new float[_pixels];
-            _scaleX = width;
-            _scaleY = height;
-            _aaMode = aaMode;
-            if (transparentBackground)
-            {
-                Array.Fill(_a, 0f);
-            }
-            else
-            {
-                Array.Fill(_a, 1f);
-            }
-        }
+        private AntiAliasMode _aaMode;
+        private CancellationToken _cancellationToken;
 
         /// <summary>Convert a vector canvas to a raster picture.</summary>
         /// <param name="canvas">The vector canvas to render.</param>
@@ -53,8 +36,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         /// <param name="transparentBackground">Whether the background should be transparent.</param>
         /// <param name="aaMode">Anti-aliasing mode (None, SSAA2x, SSAA4x, SSAA8x).</param>
         /// <returns>A 16-bit picture with the rendered result.</returns>
-        public static IPicture Convert(VectorPicture canvas, int width, int height,
-            bool transparentBackground = false, AntiAliasMode aaMode = AntiAliasMode.None)
+        public IPicture Convert(VectorPicture canvas, int width, int height,
+            bool transparentBackground = false, AntiAliasMode aaMode = AntiAliasMode.None,
+            CancellationToken cancellationToken = default)
         {
             if (width <= 0 || height <= 0)
                 throw new ArgumentOutOfRangeException($"Canvas size must be positive. Got {width}x{height}.");
@@ -68,60 +52,72 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             int renderWidth = width * scaleFactor;
             int renderHeight = height * scaleFactor;
 
-            var converter = new VectorToIPicture(renderWidth, renderHeight, transparentBackground, aaMode);
+            // Initialize render buffers
+            _width = renderWidth;
+            _height = renderHeight;
+            _pixels = renderWidth * renderHeight;
+            _r = new ushort[_pixels];
+            _g = new ushort[_pixels];
+            _b = new ushort[_pixels];
+            _a = new float[_pixels];
+            _scaleX = renderWidth;
+            _scaleY = renderHeight;
+            _aaMode = aaMode;
+            _cancellationToken = cancellationToken;
 
-            if (!transparentBackground)
+            if (transparentBackground)
             {
-                // White background
-                Array.Fill(converter._r, ushort.MaxValue);
-                Array.Fill(converter._g, ushort.MaxValue);
-                Array.Fill(converter._b, ushort.MaxValue);
+                Array.Fill(_a, 0f);
+            }
+            else
+            {
+                Array.Fill(_a, 1f);
+                Array.Fill(_r, ushort.MaxValue);
+                Array.Fill(_g, ushort.MaxValue);
+                Array.Fill(_b, ushort.MaxValue);
             }
 
-            // Sort elements by layer index (lowest first, drawn first = bottom)
             foreach (var element in canvas.Elements.OrderBy(e => e.LayerIndex))
             {
-                // UseUniformScale elements (glyphs, debug boxes): BaseX/Y holds the
-                // canvas-space text-block origin; RelativeX/Y holds the uniform-space
-                // cursor advance.  Map each through its own scale so that glyph outlines
-                // and character advances stay in sync on non-square canvases.
+                _cancellationToken.ThrowIfCancellationRequested();
+
                 if (element.UseUniformScale)
                 {
                     float us = Math.Min(renderWidth, renderHeight);
-                    converter._scaleX = us;
-                    converter._scaleY = us;
+                    _scaleX = us;
+                    _scaleY = us;
                     var ox = element.BaseX * renderWidth + element.RelativeX * us;
                     var oy = element.BaseY * renderHeight + element.RelativeY * us;
                     var segments = element.Draw();
-                    RenderSegments(converter, segments, ox, oy, element.Rotation);
+                    RenderSegments(this, segments, ox, oy, element.Rotation);
                 }
                 else
                 {
-                    converter._scaleX = renderWidth;
-                    converter._scaleY = renderHeight;
+                    _scaleX = renderWidth;
+                    _scaleY = renderHeight;
                     var ox = element.RelativeX * renderWidth;
                     var oy = element.RelativeY * renderHeight;
                     var segments = element.Draw();
-                    RenderSegments(converter, segments, ox, oy, element.Rotation);
+                    RenderSegments(this, segments, ox, oy, element.Rotation);
                 }
             }
 
             if (scaleFactor > 1)
-                return DownsampleToOutput(converter, width, height, scaleFactor, renderWidth);
+                return DownsampleToOutput(this, width, height, scaleFactor, renderWidth, cancellationToken);
 
             var needsAlpha = false;
-            for (int i = 0; i < converter._pixels; i++)
+            for (int i = 0; i < _pixels; i++)
             {
-                if (converter._a[i] < 1f)
+                if (_a[i] < 1f)
                 { needsAlpha = true; break; }
             }
 
             return new Picture16bpp(width, height)
             {
-                r = converter._r,
-                g = converter._g,
-                b = converter._b,
-                a = needsAlpha ? converter._a : null,
+                r = _r,
+                g = _g,
+                b = _b,
+                a = needsAlpha ? _a : null,
                 HasAlphaChannel = needsAlpha,
             };
         }
@@ -131,7 +127,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // ---------------------------------------------------------------
 
         private static void RenderSegments(
-            VectorToIPicture converter, VectorSegment[] segments,
+            CPUVectorPictureRasterizer converter, VectorSegment[] segments,
             float ox, float oy, float rotation)
         {
             if (rotation != 0f)
@@ -448,31 +444,30 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             var x1 = (int)(x + w + 0.5f);
             var y1 = (int)(y + h + 0.5f);
 
-            // Compute corner bounds: for each pixel, check if it's inside the rounded rect
-            for (var py = Math.Max(y0, 0); py <= Math.Min(y1, _height - 1); py++)
+            var clampY0 = Math.Max(y0, 0);
+            var clampY1 = Math.Min(y1, _height - 1);
+            var clampX0 = Math.Max(x0, 0);
+            var clampX1 = Math.Min(x1, _width - 1);
+
+            Parallel.For(clampY0, clampY1 + 1, new ParallelOptions { CancellationToken = _cancellationToken }, py =>
             {
-                for (var px = Math.Max(x0, 0); px <= Math.Min(x1, _width - 1); px++)
+                for (var px = clampX0; px <= clampX1; px++)
                 {
-                    // Determine which corner region the pixel falls into (or none = interior)
                     var cx = px + 0.5f;
                     var cy = py + 0.5f;
 
-                    // Check if inside the rounded rect shape
                     var inside = false;
 
                     if (cx >= x + radius && cx <= x + w - radius)
                     {
-                        // Between the vertical rounded corners — always inside if within horizontal range
                         inside = cy >= y && cy <= y + h;
                     }
                     else if (cy >= y + radius && cy <= y + h - radius)
                     {
-                        // Between the horizontal rounded corners
                         inside = cx >= x && cx <= x + w;
                     }
                     else
                     {
-                        // In one of the four corner quadrants — check distance from corner center
                         var cornerX = cx < x + w * 0.5f ? x + radius : x + w - radius;
                         var cornerY = cy < y + h * 0.5f ? y + radius : y + h - radius;
                         var dx = cx - cornerX;
@@ -498,7 +493,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                         }
                     }
                 }
-            }
+            });
         }
 
         private void DrawRoundedRectStroke(float x, float y, float w, float h, float radius, float thickness,
@@ -569,15 +564,13 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             var rx2 = rx * rx;
             var ry2 = ry * ry;
 
-            for (var py = y0; py <= y1; py++)
+            Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = _cancellationToken }, py =>
             {
                 var dy = py + 0.5f - cy;
                 var dy2 = dy * dy;
 
-                // Solve ellipse equation: (x-cx)²/rx² + dy²/ry² <= 1
-                // => x = cx ± rx * sqrt(1 - dy²/ry²)
                 var t = 1f - dy2 / ry2;
-                if (t < 0) continue;
+                if (t < 0) return;
 
                 var halfSpan = rx * MathF.Sqrt(t);
                 var left = Math.Clamp((int)(cx - halfSpan + 0.5f), 0, _width - 1);
@@ -600,7 +593,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                         _a[idx] = aOut;
                     }
                 }
-            }
+            });
         }
 
         private void DrawEllipseStroke(float cx, float cy, float rx, float ry, float thickness,
@@ -852,7 +845,6 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         private void FillPolygonScanline(ReadOnlySpan<(float x, float y)> pts,
             ushort r, ushort g, ushort b, float alpha)
         {
-            // Find Y bounds
             var minY = float.MaxValue;
             var maxY = float.MinValue;
             for (var i = 0; i < pts.Length; i++)
@@ -863,34 +855,33 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
             var y0 = Math.Clamp((int)(minY + 0.5f), 0, _height - 1);
             var y1 = Math.Clamp((int)(maxY + 0.5f), 0, _height - 1);
+            var n = pts.Length;
+            var ptArray = new (float x, float y)[n];
+            pts.CopyTo(ptArray);
 
-            // For each scanline, find intersections with polygon edges
-            var intersections = new float[pts.Length];
-
-            for (var py = y0; py <= y1; py++)
+            Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = _cancellationToken }, py =>
             {
                 var y = py + 0.5f;
+                var intersections = new float[n];
                 var count = 0;
 
-                for (var i = 0; i < pts.Length; i++)
+                for (var i = 0; i < n; i++)
                 {
-                    var j = (i + 1) % pts.Length;
-                    var yA = pts[i].y;
-                    var yB = pts[j].y;
+                    var j = (i + 1) % n;
+                    var yA = ptArray[i].y;
+                    var yB = ptArray[j].y;
 
                     if ((yA <= y && yB > y) || (yB <= y && yA > y))
                     {
                         var t = (y - yA) / (yB - yA);
-                        intersections[count++] = pts[i].x + t * (pts[j].x - pts[i].x);
+                        intersections[count++] = ptArray[i].x + t * (ptArray[j].x - ptArray[i].x);
                     }
                 }
 
-                if (count < 2) continue;
+                if (count < 2) return;
 
-                // Sort intersections
                 Array.Sort(intersections, 0, count);
 
-                // Fill between pairs
                 for (var k = 0; k < count - 1; k += 2)
                 {
                     var xL = Math.Clamp((int)(intersections[k] + 0.5f), 0, _width - 1);
@@ -914,7 +905,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                         }
                     }
                 }
-            }
+            });
         }
 
         // ---------------------------------------------------------------
@@ -973,11 +964,12 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             int y0 = Math.Clamp((int)(minY + 0.5f), 0, _height - 1);
             int y1 = Math.Clamp((int)(maxY + 0.5f), 0, _height - 1);
 
-            var intersections = new float[totalEdges];
+            var totalEdgesCount = totalEdges; // captured by closure
 
-            for (int py = y0; py <= y1; py++)
+            Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = _cancellationToken }, py =>
             {
                 float y = py + 0.5f;
+                var intersections = new float[totalEdgesCount];
                 int count = 0;
 
                 for (int i = 0; i < edgeCount; i++)
@@ -986,7 +978,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                         intersections[count++] = edges[i].xA + (y - edges[i].yA) * edges[i].dx;
                 }
 
-                if (count < 2) continue;
+                if (count < 2) return;
 
                 Array.Sort(intersections, 0, count);
 
@@ -1013,7 +1005,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                         }
                     }
                 }
-            }
+            });
         }
 
         // ---------------------------------------------------------------
@@ -1051,10 +1043,14 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 },
                 CubicBezierVectorSegment s => s with
                 {
-                    X1 = s.X1 * cosA - s.Y1 * sinA,  Y1 = s.X1 * sinA + s.Y1 * cosA,
-                    X2 = s.X2 * cosA - s.Y2 * sinA,  Y2 = s.X2 * sinA + s.Y2 * cosA,
-                    X3 = s.X3 * cosA - s.Y3 * sinA,  Y3 = s.X3 * sinA + s.Y3 * cosA,
-                    X4 = s.X4 * cosA - s.Y4 * sinA,  Y4 = s.X4 * sinA + s.Y4 * cosA,
+                    X1 = s.X1 * cosA - s.Y1 * sinA,
+                    Y1 = s.X1 * sinA + s.Y1 * cosA,
+                    X2 = s.X2 * cosA - s.Y2 * sinA,
+                    Y2 = s.X2 * sinA + s.Y2 * cosA,
+                    X3 = s.X3 * cosA - s.Y3 * sinA,
+                    Y3 = s.X3 * sinA + s.Y3 * cosA,
+                    X4 = s.X4 * cosA - s.Y4 * sinA,
+                    Y4 = s.X4 * sinA + s.Y4 * cosA,
                 },
                 PolygonVectorSegment s => s with
                 {
@@ -1123,9 +1119,15 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 return new PolygonVectorSegment
                 {
                     Points = rotated.ToArray(),
-                    FillR = props.FillR, FillG = props.FillG, FillB = props.FillB, FillA = props.FillA,
+                    FillR = props.FillR,
+                    FillG = props.FillG,
+                    FillB = props.FillB,
+                    FillA = props.FillA,
                     Thickness = props.Thickness,
-                    StrokeR = props.StrokeR, StrokeG = props.StrokeG, StrokeB = props.StrokeB, StrokeA = props.StrokeA,
+                    StrokeR = props.StrokeR,
+                    StrokeG = props.StrokeG,
+                    StrokeB = props.StrokeB,
+                    StrokeA = props.StrokeA,
                 };
             }
 
@@ -1147,9 +1149,15 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             return new PolygonVectorSegment
             {
                 Points = rotatedCorners,
-                FillR = props.FillR, FillG = props.FillG, FillB = props.FillB, FillA = props.FillA,
+                FillR = props.FillR,
+                FillG = props.FillG,
+                FillB = props.FillB,
+                FillA = props.FillA,
                 Thickness = props.Thickness,
-                StrokeR = props.StrokeR, StrokeG = props.StrokeG, StrokeB = props.StrokeB, StrokeA = props.StrokeA,
+                StrokeR = props.StrokeR,
+                StrokeG = props.StrokeG,
+                StrokeB = props.StrokeB,
+                StrokeA = props.StrokeA,
             };
         }
 
@@ -1158,8 +1166,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         // ---------------------------------------------------------------
 
         private static IPicture DownsampleToOutput(
-            VectorToIPicture converter,
-            int outWidth, int outHeight, int scaleFactor, int renderWidth)
+            CPUVectorPictureRasterizer converter,
+            int outWidth, int outHeight, int scaleFactor, int renderWidth,
+            CancellationToken cancellationToken)
         {
             int pixels = outWidth * outHeight;
             int blockSize = scaleFactor * scaleFactor;
@@ -1169,7 +1178,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             var outB = new ushort[pixels];
             var outA = new float[pixels];
 
-            for (int y = 0; y < outHeight; y++)
+            Parallel.For(0, outHeight, new ParallelOptions { CancellationToken = cancellationToken }, y =>
             {
                 int inBaseY = y * scaleFactor;
                 for (int x = 0; x < outWidth; x++)
@@ -1197,7 +1206,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     outB[oi] = (ushort)(sumB / blockSize);
                     outA[oi] = (float)sumA / (blockSize * ushort.MaxValue);
                 }
-            }
+            });
 
             var needsAlpha = false;
             for (int i = 0; i < pixels; i++)

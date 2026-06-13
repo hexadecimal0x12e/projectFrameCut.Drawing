@@ -75,7 +75,7 @@ public sealed class TextNonSquareAspectTests
         foreach (var el in canvas.Elements)
             Assert.IsTrue(el.UseUniformScale, "Glyph elements must request uniform scaling.");
 
-        var pic = VectorToIPicture.Convert(canvas, targetW, targetH, transparentBackground: true);
+        var pic = new VectorToIPicture().Convert(canvas, targetW, targetH, transparentBackground: true);
         SaveDiagnosticPng(pic, "wide");
 
         // Scan for the bounding box of opaque (text) pixels and verify the
@@ -118,7 +118,7 @@ public sealed class TextNonSquareAspectTests
         };
 
         var canvas = new NormalTypesettingEngine().Layout(entry, font);
-        var pic = VectorToIPicture.Convert(canvas, targetW, targetH, transparentBackground: true);
+        var pic = new VectorToIPicture().Convert(canvas, targetW, targetH, transparentBackground: true);
         SaveDiagnosticPng(pic, "tall");
 
         var bbox = ScanOpaqueBoundingBox(pic);
@@ -157,7 +157,7 @@ public sealed class TextNonSquareAspectTests
         };
 
         var canvas = new NormalTypesettingEngine().Layout(entry, font);
-        var pic = VectorToIPicture.Convert(canvas, targetW, targetH, transparentBackground: true);
+        var pic = new VectorToIPicture().Convert(canvas, targetW, targetH, transparentBackground: true);
         SaveDiagnosticPng(pic, "square");
 
         var bbox = ScanOpaqueBoundingBox(pic);
@@ -180,9 +180,9 @@ public sealed class TextNonSquareAspectTests
         ushort[]? green = null;
         if (pic.HasAlphaChannel)
         {
-            alpha = pic.GetSpecificChannel<float>(IPicture.ChannelId.Alpha);
+            alpha = (float[]?)pic.GetSpecificChannel(IPicture.ChannelId.Alpha);
         }
-        green = pic.GetSpecificChannel<ushort>(IPicture.ChannelId.Green);
+        green = (ushort[]?)pic.GetSpecificChannel(IPicture.ChannelId.Green);
 
         int x0 = w, y0 = h, x1 = -1, y1 = -1;
         bool any = false;

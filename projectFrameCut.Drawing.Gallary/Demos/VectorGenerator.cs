@@ -61,7 +61,7 @@ internal static class VectorGenerator
 
         var canvas = new VectorPicture();
         canvas.Elements.Add(element);
-        var picture = VectorToIPicture.Convert(canvas, outputWidth, outputHeight, transparentBackground, aaMode);
+        var picture = new CPUVectorPictureRasterizer().Convert(canvas, outputWidth, outputHeight, transparentBackground, aaMode);
         return picture.ToImageSource();
     }
 

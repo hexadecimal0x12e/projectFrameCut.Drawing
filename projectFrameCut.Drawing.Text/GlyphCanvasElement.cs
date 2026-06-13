@@ -397,9 +397,9 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
 
         float t = ((x1 - x0) * dx + (y1 - y0) * dy) / len2;
         float d = MathF.Abs((y1 - y0) - t * dy) + MathF.Abs((x1 - x0) - t * dx);
-        // 阈值从 0.001f 收紧到 0.0000001f（控制点到弦的曼哈顿距离² < 弦长² × 0.0000001），
-        // 偏差约 0.01% 弦长，对常规渲染尺寸是亚像素级。
-        if (d * d < len2 * 0.0000001f)
+        // 控制点到弦的曼哈顿距离² < 弦长² × 0.0001，对 ≤4096px 画布
+        // 偏差在亚像素范围内（≤0.4px），同时避免产生过多顶点。
+        if (d * d < len2 * 0.0001f)
         {
             result.Add(new Point(x2, y2));
             return;

@@ -67,6 +67,19 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Line Break -->
+            <Border StrokeShape="RoundRectangle 12" Padding="16"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnLineBreakTapped" />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Line Break" FontSize="20" FontAttributes="Bold" />
+                    <Label Text="LineBreakHandler 自动折行 · 贪心算法 · font-unit / canvas-space 双模式"
+                           FontSize="13" TextColor="Gray" />
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Source Pattern (inline preview) -->
             <Border StrokeShape="RoundRectangle 12" Padding="12"
                     BackgroundColor="{AppThemeBinding Light=White, Dark=#1C1C1E}">

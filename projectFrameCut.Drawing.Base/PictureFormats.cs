@@ -50,6 +50,13 @@ namespace projectFrameCut.Drawing.Base
         /// Set the alpha channel.
         /// </summary>
         public IPicture<T> SetAlpha(bool haveAlpha);
+
+        /// <summary>
+        /// Get a specific channel's data.
+        /// </summary>
+        /// <param name="channelId">The channel want to get</param>
+        /// <returns>the data.</returns>
+        public new T[]? GetSpecificChannel(ChannelId channelId) => GetSpecificChannel(channelId) is T[] ret ? ret : throw new InvalidCastException("The channel data type does not match the requested type.");
     }
 
     /// <summary>
@@ -77,6 +84,13 @@ namespace projectFrameCut.Drawing.Base
         public float[]? a { get; set; }
 
         public new bool HasAlphaChannel { get => false; set { } }
+
+        /// <summary>
+        /// Get a specific channel's data.
+        /// </summary>
+        /// <param name="channelId">The channel want to get</param>
+        /// <returns>the data.</returns>
+        public new T[]? GetSpecificChannel(ChannelId channelId) => GetSpecificChannel(channelId) is T[] ret ? ret : throw new InvalidCastException("The channel data type does not match the requested type.");
     }
 
     /// <summary>
@@ -99,6 +113,13 @@ namespace projectFrameCut.Drawing.Base
         /// Get or set the maximum brightness (unit in nit) of this picture.
         /// </summary>
         public float MaximumBrightness { get; set; }
+
+        /// <summary>
+        /// Get a specific channel's data.
+        /// </summary>
+        /// <param name="channelId">The channel want to get</param>
+        /// <returns>the data.</returns>
+        public new T[]? GetSpecificChannel(ChannelId channelId) => GetSpecificChannel(channelId) is T[] ret ? ret : throw new InvalidCastException("The channel data type does not match the requested type.");
     }
 
 
@@ -115,6 +136,13 @@ namespace projectFrameCut.Drawing.Base
         public T[] b { get; set; }
 
         public new bool HasAlphaChannel { get => false; set { } }
+
+        /// <summary>
+        /// Get a specific channel's data.
+        /// </summary>
+        /// <param name="channelId">The channel want to get</param>
+        /// <returns>the data.</returns>
+        public new T[]? GetSpecificChannel(ChannelId channelId) => GetSpecificChannel(channelId) is T[] ret ? ret : throw new InvalidCastException("The channel data type does not match the requested type.");
     }
     /// <summary>
     /// Represents a picture with an uniform, float-based alpha channel.
@@ -129,6 +157,13 @@ namespace projectFrameCut.Drawing.Base
         public T[] b { get; set; }
         [JsonIgnore()]
         public float uniformAlpha { get; set; }
+
+        /// <summary>
+        /// Get a specific channel's data.
+        /// </summary>
+        /// <param name="channelId">The channel want to get</param>
+        /// <returns>the data.</returns>
+        public new T[]? GetSpecificChannel(ChannelId channelId) => GetSpecificChannel(channelId) is T[] ret ? ret : throw new InvalidCastException("The channel data type does not match the requested type.");
     }
 
 }

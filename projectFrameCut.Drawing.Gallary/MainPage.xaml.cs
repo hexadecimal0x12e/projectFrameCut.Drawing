@@ -28,4 +28,7 @@ public partial class MainPage : ContentPage
 
     private async void OnTextTapped(object? sender, TappedEventArgs e)
         => await Shell.Current.GoToAsync(nameof(TextPage));
+
+    private async void OnLineBreakTapped(object? sender, TappedEventArgs e)
+        => await Shell.Current.GoToAsync(nameof(LineBreakPage));
 }

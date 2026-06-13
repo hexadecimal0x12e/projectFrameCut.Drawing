@@ -14,26 +14,39 @@ public class TextMeasureBenchmarks : BenchmarkBase
 
     public enum TextLength { Short, Medium, Long }
 
+    public enum TextCategory { Latin, CJK }
+
     [Params(TextLength.Short, TextLength.Medium, TextLength.Long)]
     public TextLength Length { get; set; }
+
+    [Params(TextCategory.Latin, TextCategory.CJK)]
+    public TextCategory Category { get; set; }
 
     [GlobalSetup]
     public void Setup()
     {
         NormalTypesettingEngine.DebugDumpAdvance = false;
 
-        var fontPath = Path.Combine(Directory.GetCurrentDirectory(), "Fonts", "OpenSans-Regular.ttf");
-        _font = FontFace.Load(fontPath);
-
-        var text = Length switch
+        if (Category == TextCategory.CJK)
         {
-            TextLength.Short => "Hello, World!",
-            TextLength.Medium => "The quick brown fox jumps over the lazy dog.\n" +
+            var cjkFontPath = GetCjkFontPath();
+            _font = FontFace.AutoLoad(cjkFontPath)[0];
+        }
+        else
+        {
+            var fontPath = Path.Combine(Directory.GetCurrentDirectory(), "Fonts", "OpenSans-Regular.ttf");
+            _font = FontFace.Load(fontPath);
+        }
+
+        var text = (Category, Length) switch
+        {
+            (TextCategory.Latin, TextLength.Short) => "Hello, World!",
+            (TextCategory.Latin, TextLength.Medium) => "The quick brown fox jumps over the lazy dog.\n" +
                                  "Pack my box with five dozen liquor jugs.\n" +
                                  "How vexingly quick daft zebras jump!\n" +
                                  "The five boxing wizards jump quickly.\n" +
                                  "Sphinx of black quartz, judge my vow.",
-            TextLength.Long => string.Join("\n", Enumerable.Repeat(
+            (TextCategory.Latin, TextLength.Long) => string.Join("\n", Enumerable.Repeat(
                 "The quick brown fox jumps over the lazy dog. " +
                 "Pack my box with five dozen liquor jugs. " +
                 "How vexingly quick daft zebras jump! " +
@@ -45,13 +58,29 @@ public class TextMeasureBenchmarks : BenchmarkBase
                 "Grumpy wizards make a toxic brew for the jovial queen. " +
                 "Fred specialized in the job of making very quaint wax toys.\n",
                 20)),
+            (TextCategory.CJK, TextLength.Short) => "你好，世界！",
+            (TextCategory.CJK, TextLength.Medium) => "春风又绿江南岸，明月何时照我还。\n" +
+                                 "人生自古谁无死，留取丹心照汗青。\n" +
+                                 "落霞与孤鹜齐飞，秋水共长天一色。\n" +
+                                 "问君能有几多愁，恰似一江春水向东流。\n" +
+                                 "山重水复疑无路，柳暗花明又一村。",
+            (TextCategory.CJK, TextLength.Long) => string.Join("\n", Enumerable.Repeat(
+                "春风又绿江南岸，明月何时照我还。人生自古谁无死，留取丹心照汗青。\n" +
+                "落霞与孤鹜齐飞，秋水共长天一色。问君能有几多愁，恰似一江春水向东流。\n" +
+                "山重水复疑无路，柳暗花明又一村。不畏浮云遮望眼，自缘身在最高层。\n" +
+                "海内存知己，天涯若比邻。但愿人长久，千里共婵娟。\n" +
+                "壮志饥餐胡虏肉，笑谈渴饮匈奴血。待从头、收拾旧山河，朝天阙。\n" +
+                "醉卧沙场君莫笑，古来征战几人回。黄沙百战穿金甲，不破楼兰终不还。\n" +
+                "纸上得来终觉浅，绝知此事要躬行。问渠那得清如许，为有源头活水来。\n" +
+                "昨夜西风凋碧树，独上高楼，望尽天涯路。衣带渐宽终不悔，为伊消得人憔悴。\n",
+                20)),
             _ => ""
         };
 
         _entry = new TextEntry
         {
             Text = text,
-            FontName = "OpenSans",
+            FontName = Category == TextCategory.CJK ? "CJK-Font" : "OpenSans",
             FontSize = 0.1f
         };
 
