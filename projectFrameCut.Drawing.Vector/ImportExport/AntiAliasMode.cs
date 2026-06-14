@@ -4,7 +4,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
     public enum AntiAliasMode
     {
         /// <summary>No anti-aliasing.</summary>
-        None = 0,
+        None = 1,
         /// <summary>2x supersampling anti-aliasing.</summary>
         SSAA2x = 2,
         /// <summary>4x supersampling anti-aliasing.</summary>

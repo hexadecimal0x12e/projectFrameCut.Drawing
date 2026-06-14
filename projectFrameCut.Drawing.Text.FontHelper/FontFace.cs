@@ -81,8 +81,6 @@ public sealed class FontFace : IDisposable
             ? new VariationEngine(this, sfnt)
             : null;
 
-        if (_cff is not null && !(AppContext.TryGetSwitch("projectFrameCut.Drawing.EnableCFFBasedOtfFont", out var cffEnabled) && cffEnabled))
-            throw new InvalidFontFileException("projectFrameCut.Drawing have some issue on CFF-based OTF fonts and they've not supported in this build. If you still want to use it, define the AppContext switch 'projectFrameCut.Drawing.EnableCFFBasedOtfFont' to true.");
 
     }
 

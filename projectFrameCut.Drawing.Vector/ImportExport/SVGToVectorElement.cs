@@ -102,8 +102,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     }
                 }
 
-                if (fillPolys.Count > 0)
-                    sb.Append(MergedPolygonPath(fillPolys, ox, oy, scaleX, scaleY));
+                // Keep fill polygons separate
+                foreach (var poly in fillPolys)                                                           
+                    sb.Append(PolygonToSvg(poly, ox, oy, scaleX, scaleY));    
                 if (strokePolys.Count > 0)
                     sb.Append(MergedPolygonPath(strokePolys, ox, oy, scaleX, scaleY));
                 foreach (var seg in otherSegs)

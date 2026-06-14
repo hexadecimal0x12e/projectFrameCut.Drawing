@@ -39,11 +39,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             if (width <= 0 || height <= 0)
                 throw new ArgumentOutOfRangeException($"Canvas size must be positive. Got {width}x{height}.");
 
-            int scaleFactor = aaMode switch
-            {
-                AntiAliasMode.None => 1,
-                _ => (int)aaMode
-            };
+            int scaleFactor = aaMode != 0 ? (int)aaMode : 1;
+            if (scaleFactor <= 0 || (scaleFactor != 1 && scaleFactor % 2 != 0))
+                throw new ArgumentException($"Anti-aliasing scale factor must be one of pre-defined enum values, 0 or 1 for no Anti-aliasing, or a non-negative integer which is power of 2. Got {scaleFactor}.");
 
             int renderWidth = width * scaleFactor;
             int renderHeight = height * scaleFactor;
@@ -748,7 +746,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             {
                 if (hasHoles)
                 {
-                    FillPolygonScanlineEvenOdd(ctx, canvasPts, s.Holes!, ox, oy, s.FillR, s.FillG, s.FillB, s.FillA);
+                    FillPolygonScanlineNonZero(ctx, canvasPts, s.Holes!, ox, oy, s.FillR, s.FillG, s.FillB, s.FillA);
                 }
                 else
                 {
@@ -835,7 +833,7 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         }
 
         // ---------------------------------------------------------------
-        // Scanline polygon fill
+        // Scanline polygon fill (non-zero winding for a single contour)
         // ---------------------------------------------------------------
 
         private static void FillPolygonScanline(RenderContext ctx, ReadOnlySpan<(float x, float y)> pts,
@@ -852,36 +850,57 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             var y0 = Math.Clamp((int)(minY + 0.5f), 0, ctx.height - 1);
             var y1 = Math.Clamp((int)(maxY + 0.5f), 0, ctx.height - 1);
             var n = pts.Length;
-            var ptArray = new (float x, float y)[n];
-            pts.CopyTo(ptArray);
+            var edges = new (float yMin, float yMax, float xAtYMin, float dx, int windingDelta)[n];
+            int edgeCount = 0;
+
+            for (var i = 0; i < n; i++)
+            {
+                var j = (i + 1) % n;
+                var yA = pts[i].y;
+                var yB = pts[j].y;
+                var xA = pts[i].x;
+                var xB = pts[j].x;
+                if (yA == yB)
+                    continue;
+
+                edges[edgeCount++] = yA < yB
+                    ? (yA, yB, xA, (xB - xA) / (yB - yA), +1)
+                    : (yB, yA, xB, (xA - xB) / (yA - yB), -1);
+            }
 
             Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = ctx.cancellationToken }, py =>
             {
                 var y = py + 0.5f;
-                var intersections = new float[n];
+                var intersections = new (float x, int delta)[edgeCount];
                 var count = 0;
 
-                for (var i = 0; i < n; i++)
+                for (var i = 0; i < edgeCount; i++)
                 {
-                    var j = (i + 1) % n;
-                    var yA = ptArray[i].y;
-                    var yB = ptArray[j].y;
-
-                    if ((yA <= y && yB > y) || (yB <= y && yA > y))
-                    {
-                        var t = (y - yA) / (yB - yA);
-                        intersections[count++] = ptArray[i].x + t * (ptArray[j].x - ptArray[i].x);
-                    }
+                    if (y >= edges[i].yMin && y < edges[i].yMax)
+                        intersections[count++] = (edges[i].xAtYMin + (y - edges[i].yMin) * edges[i].dx, edges[i].windingDelta);
                 }
 
                 if (count < 2) return;
 
-                Array.Sort(intersections, 0, count);
+                Array.Sort(intersections, 0, count, Comparer<(float x, int delta)>.Create((a, b) => a.x.CompareTo(b.x)));
 
-                for (var k = 0; k < count - 1; k += 2)
+                var winding = 0;
+                var k = 0;
+                while (k < count)
                 {
-                    var xL = Math.Clamp((int)(intersections[k] + 0.5f), 0, ctx.width - 1);
-                    var xR = Math.Clamp((int)(intersections[k + 1] + 0.5f), 0, ctx.width - 1);
+                    var xStart = intersections[k].x;
+                    do
+                    {
+                        winding += intersections[k].delta;
+                        k++;
+                    } while (k < count && MathF.Abs(intersections[k].x - xStart) <= 1e-5f);
+
+                    if (winding == 0 || k >= count)
+                        continue;
+
+                    var xEnd = intersections[k].x;
+                    var xL = Math.Clamp((int)(xStart + 0.5f), 0, ctx.width - 1);
+                    var xR = Math.Clamp((int)(xEnd + 0.5f), 0, ctx.width - 1);
 
                     for (var px = xL; px <= xR; px++)
                     {
@@ -905,22 +924,25 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         }
 
         // ---------------------------------------------------------------
-        // Even-odd polygon fill (outer + holes)
+        // Non-zero winding polygon fill (outer + holes)
         // ---------------------------------------------------------------
 
-        private static void FillPolygonScanlineEvenOdd(
+        private static void FillPolygonScanlineNonZero(
             RenderContext ctx,
             ReadOnlySpan<(float x, float y)> outerPts,
             Point[][] holes,
             float ox, float oy,
             ushort r, ushort g, ushort b, float alpha)
         {
-            // Collect all edge segments: outer + every hole contour.
+            // Collect all edge segments: outer + every hole contour. Preserve
+            // edge direction so the non-zero winding rule can distinguish
+            // filled regions from counters, including outlines that touch or
+            // nearly touch at shared scanlines.
             int totalEdges = outerPts.Length;
             foreach (var h in holes)
                 totalEdges += h.Length;
 
-            var edges = new (float yA, float yB, float xA, float xB, float dx)[totalEdges];
+            var edges = new (float yMin, float yMax, float xAtYMin, float dx, int windingDelta)[totalEdges];
             int ei = 0;
 
             void AddEdges(ReadOnlySpan<(float x, float y)> pts)
@@ -931,9 +953,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     float yA = pts[i].y, yB = pts[j].y;
                     float xA = pts[i].x, xB = pts[j].x;
                     if (yA == yB) continue; // horizontal edge — skip
-                    edges[ei++] = yA <= yB
-                        ? (yA, yB, xA, xB, (xB - xA) / (yB - yA))
-                        : (yB, yA, xB, xA, (xA - xB) / (yA - yB));
+                    edges[ei++] = yA < yB
+                        ? (yA, yB, xA, (xB - xA) / (yB - yA), +1)
+                        : (yB, yA, xB, (xA - xB) / (yA - yB), -1);
                 }
             }
 
@@ -954,8 +976,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             float minY = float.MaxValue, maxY = float.MinValue;
             for (int i = 0; i < edgeCount; i++)
             {
-                if (edges[i].yA < minY) minY = edges[i].yA;
-                if (edges[i].yB > maxY) maxY = edges[i].yB;
+                if (edges[i].yMin < minY) minY = edges[i].yMin;
+                if (edges[i].yMax > maxY) maxY = edges[i].yMax;
             }
 
             int y0 = Math.Clamp((int)(minY + 0.5f), 0, ctx.height - 1);
@@ -966,23 +988,36 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = ctx.cancellationToken }, py =>
             {
                 float y = py + 0.5f;
-                var intersections = new float[totalEdgesCount];
+                var intersections = new (float x, int delta)[totalEdgesCount];
                 int count = 0;
 
                 for (int i = 0; i < edgeCount; i++)
                 {
-                    if (y >= edges[i].yA && y < edges[i].yB)
-                        intersections[count++] = edges[i].xA + (y - edges[i].yA) * edges[i].dx;
+                    if (y >= edges[i].yMin && y < edges[i].yMax)
+                        intersections[count++] = (edges[i].xAtYMin + (y - edges[i].yMin) * edges[i].dx, edges[i].windingDelta);
                 }
 
                 if (count < 2) return;
 
-                Array.Sort(intersections, 0, count);
+                Array.Sort(intersections, 0, count, Comparer<(float x, int delta)>.Create((a, b) => a.x.CompareTo(b.x)));
 
-                for (int k = 0; k < count - 1; k += 2)
+                int winding = 0;
+                int k = 0;
+                while (k < count)
                 {
-                    int xL = Math.Clamp((int)(intersections[k] + 0.5f), 0, ctx.width - 1);
-                    int xR = Math.Clamp((int)(intersections[k + 1] + 0.5f), 0, ctx.width - 1);
+                    float xStart = intersections[k].x;
+                    do
+                    {
+                        winding += intersections[k].delta;
+                        k++;
+                    } while (k < count && MathF.Abs(intersections[k].x - xStart) <= 1e-5f);
+
+                    if (winding == 0 || k >= count)
+                        continue;
+
+                    float xEnd = intersections[k].x;
+                    int xL = Math.Clamp((int)(xStart + 0.5f), 0, ctx.width - 1);
+                    int xR = Math.Clamp((int)(xEnd + 0.5f), 0, ctx.width - 1);
 
                     for (int px = xL; px <= xR; px++)
                     {

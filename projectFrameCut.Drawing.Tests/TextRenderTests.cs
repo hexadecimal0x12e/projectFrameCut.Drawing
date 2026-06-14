@@ -1,5 +1,6 @@
 using projectFrameCut.Drawing.Text;
 using projectFrameCut.Drawing.Text.FontHelper.Table;
+using projectFrameCut.Drawing.Vector;
 using System.Reflection;
 
 namespace projectFrameCut.Drawing.Tests;
@@ -38,6 +39,138 @@ public sealed class TextRenderTests
         element.WithFill(255, 0, 0);
 
         Assert.IsEmpty(element.Draw());
+    }
+
+    [TestMethod]
+    public void GlyphCanvasElement_Draw_ClassifiesHoleByOppositeWinding()
+    {
+        // Standard font convention: hole contours are wound opposite to their outer.
+        // Outer: CW in Y-down (positive area); hole: CCW in Y-down (negative area).
+        var glyph = CreateGlyph(
+        [
+            [
+                new GlyphPoint(0, 0, true),
+                new GlyphPoint(100, 0, true),
+                new GlyphPoint(100, 100, true),
+                new GlyphPoint(0, 100, true),
+            ],
+            // CCW (reversed) inner square — a proper counter/hole.
+            [
+                new GlyphPoint(25, 25, true),
+                new GlyphPoint(25, 75, true),
+                new GlyphPoint(75, 75, true),
+                new GlyphPoint(75, 25, true),
+            ],
+        ]);
+
+        var element = new GlyphCanvasElement(glyph, 1000).WithFill(1, 2, 3, 1f);
+
+        var fills = element.Draw().OfType<PolygonVectorSegment>().Where(s => s.FillA > 0f).ToArray();
+
+        Assert.AreEqual(1, fills.Length);
+        Assert.IsNotNull(fills[0].Holes);
+        Assert.AreEqual(1, fills[0].Holes!.Length);
+    }
+
+    [TestMethod]
+    public void GlyphCanvasElement_Draw_SameWindingInner_TreatedAsOuterFill_NotHole()
+    {
+        // Same-winding inner contours are overlapping filled strokes (e.g. CFF fonts like
+        // Source Han Serif). They must NOT be punched as holes, which would create white gaps
+        // at stroke intersections. Instead they are promoted to independent outer fills.
+        var glyph = CreateGlyph(
+        [
+            [
+                new GlyphPoint(0, 0, true),
+                new GlyphPoint(100, 0, true),
+                new GlyphPoint(100, 100, true),
+                new GlyphPoint(0, 100, true),
+            ],
+            // CW inner square (same winding as outer) — overlapping stroke, not a hole.
+            [
+                new GlyphPoint(25, 25, true),
+                new GlyphPoint(75, 25, true),
+                new GlyphPoint(75, 75, true),
+                new GlyphPoint(25, 75, true),
+            ],
+        ]);
+
+        var element = new GlyphCanvasElement(glyph, 1000).WithFill(1, 2, 3, 1f);
+
+        var fills = element.Draw().OfType<PolygonVectorSegment>().Where(s => s.FillA > 0f).ToArray();
+
+        // Both contours should be filled independently — no holes punched.
+        Assert.AreEqual(2, fills.Length);
+        Assert.IsTrue(fills.All(f => f.Holes == null || f.Holes.Length == 0),
+            "Same-winding inner contour must not be added as a hole.");
+    }
+
+    [TestMethod]
+    public void GlyphCanvasElement_Draw_AssignsHoleToContainingOuter()
+    {
+        var glyph = CreateGlyph(
+        [
+            [
+                new GlyphPoint(0, 0, true),
+                new GlyphPoint(80, 0, true),
+                new GlyphPoint(80, 80, true),
+                new GlyphPoint(0, 80, true),
+            ],
+            // CCW inner — a proper hole for the first outer.
+            [
+                new GlyphPoint(20, 20, true),
+                new GlyphPoint(20, 60, true),
+                new GlyphPoint(60, 60, true),
+                new GlyphPoint(60, 20, true),
+            ],
+            [
+                new GlyphPoint(120, 0, true),
+                new GlyphPoint(200, 0, true),
+                new GlyphPoint(200, 80, true),
+                new GlyphPoint(120, 80, true),
+            ],
+            // CCW inner — a proper hole for the second outer.
+            [
+                new GlyphPoint(140, 20, true),
+                new GlyphPoint(140, 60, true),
+                new GlyphPoint(180, 60, true),
+                new GlyphPoint(180, 20, true),
+            ],
+        ]);
+
+        var element = new GlyphCanvasElement(glyph, 1000).WithFill(1, 2, 3, 1f);
+
+        var fills = element.Draw().OfType<PolygonVectorSegment>().Where(s => s.FillA > 0f).ToArray();
+
+        Assert.AreEqual(2, fills.Length);
+        CollectionAssert.AreEquivalent(new[] { 1, 1 }, fills.Select(f => f.Holes?.Length ?? 0).ToArray());
+    }
+
+    [TestMethod]
+    public void GlyphCanvasElement_Draw_DoesNotTreatPartialOverlapAsHole()
+    {
+        var glyph = CreateGlyph(
+        [
+            [
+                new GlyphPoint(0, 0, true),
+                new GlyphPoint(100, 0, true),
+                new GlyphPoint(100, 100, true),
+                new GlyphPoint(0, 100, true),
+            ],
+            [
+                new GlyphPoint(75, 25, true),
+                new GlyphPoint(150, 25, true),
+                new GlyphPoint(150, 100, true),
+                new GlyphPoint(75, 100, true),
+            ],
+        ]);
+
+        var element = new GlyphCanvasElement(glyph, 1000).WithFill(1, 2, 3, 1f);
+
+        var fills = element.Draw().OfType<PolygonVectorSegment>().Where(s => s.FillA > 0f).ToArray();
+
+        Assert.AreEqual(2, fills.Length);
+        CollectionAssert.AreEquivalent(new[] { 0, 0 }, fills.Select(f => f.Holes?.Length ?? 0).ToArray());
     }
 
     // ──────────────────────────────────────────────
@@ -133,6 +266,26 @@ public sealed class TextRenderTests
             Array.Empty<GlyphPoint[]>(),  // contours
             (short)0, (short)0,          // xMin, yMin
             (short)0, (short)0,          // xMax, yMax
+        ]);
+    }
+
+    private static Glyph CreateGlyph(params GlyphPoint[][] contours)
+    {
+        var ctor = typeof(Glyph).GetConstructors(
+            BindingFlags.NonPublic | BindingFlags.Instance)[0];
+
+        short xMin = contours.SelectMany(c => c).Min(p => p.X);
+        short yMin = contours.SelectMany(c => c).Min(p => p.Y);
+        short xMax = contours.SelectMany(c => c).Max(p => p.X);
+        short yMax = contours.SelectMany(c => c).Max(p => p.Y);
+
+        return (Glyph)ctor.Invoke([
+            0,
+            contours,
+            xMin,
+            yMin,
+            xMax,
+            yMax,
         ]);
     }
 }

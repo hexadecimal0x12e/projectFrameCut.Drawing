@@ -138,8 +138,9 @@ namespace projectFrameCut.Drawing.Vector
 
         /// <summary>
         /// Optional hole polygons. When set, all edges (outer + holes) are
-        /// rendered together using the even-odd fill rule so that holes
-        /// punch through the main polygon instead of being filled over.
+        /// rendered together using the non-zero winding rule. Holes should be
+        /// wound in the opposite direction to the outer polygon so that their
+        /// winding cancels the outer's and punches through to the background.
         /// </summary>
         public Point[][]? Holes { get; init; }
     }

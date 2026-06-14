@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 
 namespace projectFrameCut.Drawing.Text.FontHelper.Table;
 
@@ -80,7 +81,8 @@ internal sealed class CffTable
 
         // ── Parse Top DICT ──
         int charStringsOffset = GetDictOffset(topDict, 17); // CharStrings operator
-        bool isCID = topDict.ContainsKey(86); // FDArray operator (CID-keyed)
+        // CID-keyed fonts are identified by ROS (12 30) in Top DICT.
+        bool isCID = topDict.ContainsKey(1230);
 
         // Parse CharStrings INDEX
         byte[][] charStrings = ParseIndexAt(cffData, charStringsOffset, numGlyphs);
@@ -109,11 +111,11 @@ internal sealed class CffTable
         else
         {
             // CID-keyed font
-            if (!topDict.TryGetValue(36, out var fdArrayData) || fdArrayData.Count < 1)
+            if (!topDict.TryGetValue(1236, out var fdArrayData) || fdArrayData.Count < 1)
                 throw new InvalidFontFileException("CID-keyed CFF font missing FDArray.");
             int fdArrayOffset = (int)fdArrayData[0];
 
-            if (!topDict.TryGetValue(37, out var fdSelectData) || fdSelectData.Count < 1)
+            if (!topDict.TryGetValue(1237, out var fdSelectData) || fdSelectData.Count < 1)
                 throw new InvalidFontFileException("CID-keyed CFF font missing FDSelect.");
             int fdSelectOffset = (int)fdSelectData[0];
 
@@ -214,6 +216,7 @@ internal sealed class CffTable
         private int _hintCount;
         private int _subrDepth;
         private bool _done;
+        private readonly double[] _transient = new double[32];
 
         private const int MaxSubrDepth = 20;
         private const int MaxSubrCalls = 5000;
@@ -301,9 +304,17 @@ internal sealed class CffTable
                     int b1 = charString[ip++];
                     ProcessEscapeOp(b1);
                 }
-                else if (b0 == 18 || b0 == 19)
+                else if (b0 == 255)
                 {
-                    // hintmask (18) / cntrmask (19)
+                    if (ip + 3 >= charString.Length) break;
+                    int fixed1616 = (charString[ip] << 24) | (charString[ip + 1] << 16) |
+                                    (charString[ip + 2] << 8) | charString[ip + 3];
+                    ip += 4;
+                    _stack.Add(fixed1616 / 65536.0);
+                }
+                else if (b0 == 19 || b0 == 20)
+                {
+                    // hintmask (19) / cntrmask (20)
                     // These operators consume the stacked hints and are followed by mask bytes.
                     // The mask size depends on total hint count.
                     if (!_widthParsed)
@@ -362,6 +373,9 @@ internal sealed class CffTable
                 case 3: // vstem
                     if (!_widthParsed) { _widthParsed = true; if (_stack.Count % 2 == 1) _stack.RemoveAt(0); }
                     _hintCount += _stack.Count / 2; _stack.Clear(); break;
+                case 18: // hstemhm
+                    if (!_widthParsed) { _widthParsed = true; if (_stack.Count % 2 == 1) _stack.RemoveAt(0); }
+                    _hintCount += _stack.Count / 2; _stack.Clear(); break;
 
                 case 4: // vmoveto
                     CheckWidth(1);
@@ -371,12 +385,14 @@ internal sealed class CffTable
 
                 case 5: // rlineto
                     CheckWidthMod(_stack.Count, 2);
+                    EnsureContour();
                     while (_stack.Count >= 2) { _x += PopIntAt(0); _y += PopIntAt(0); AddLinePoint(); }
                     break;
 
                 case 6: // hlineto
                     {
                         CheckWidthAllowOdd(_stack.Count);
+                        EnsureContour();
                         bool horizontal = true;
                         while (_stack.Count > 0)
                         {
@@ -391,6 +407,7 @@ internal sealed class CffTable
                 case 7: // vlineto
                     {
                         CheckWidthAllowOdd(_stack.Count);
+                        EnsureContour();
                         bool vertical = true;
                         while (_stack.Count > 0)
                         {
@@ -432,20 +449,20 @@ internal sealed class CffTable
                 case 14: // endchar
                     CloseContour(); _done = true; break;
 
-                case 20: // rmoveto
+                case 21: // rmoveto
                     CheckWidth(2); _x += PopIntAt(0); _y += PopIntAt(0); MoveTo();
                     break;
 
-                case 21: // hmoveto
+                case 22: // hmoveto
                     CheckWidth(1); _x += PopInt(); MoveTo();
                     break;
 
-                case 22: // vstemhm
+                case 23: // vstemhm
                     if (!_widthParsed) { _widthParsed = true; if (_stack.Count % 2 == 1) _stack.RemoveAt(0); }
                     _hintCount += _stack.Count / 2; _stack.Clear();
                     break;
 
-                case 23: // rcurveline
+                case 24: // rcurveline
                     {
                         int cnt = _stack.Count;
                         // rcurveline: 6n+2 operands (no width) or 6n+3 (with width).
@@ -471,7 +488,7 @@ internal sealed class CffTable
                     }
                     break;
 
-                case 24: // rlinecurve
+                case 25: // rlinecurve
                     {
                         int cnt = _stack.Count;
                         if (cnt > 6 && !_widthParsed && (cnt - 7) % 2 == 0)
@@ -493,51 +510,77 @@ internal sealed class CffTable
                     }
                     break;
 
-                case 25: // vvcurveto
+                case 26: // vvcurveto
                     {
                         int cnt = _stack.Count;
-                        if (cnt > 0 && !_widthParsed && (cnt % 2 == 1))
-                        { _widthParsed = true; _stack.RemoveAt(0); }
+                        if (!_widthParsed)
+                        {
+                            _widthParsed = true;
+                            if (cnt % 4 == 2) _stack.RemoveAt(0);
+                        }
                         EnsureContour();
+                        if ((_stack.Count & 1) == 1)
+                            _x += PopIntAt(0); // optional dx1 for first curve only
                         while (_stack.Count >= 4)
                         {
-                            int dy1 = PopIntAt(0), dy2 = PopIntAt(0), dx3 = PopIntAt(0), dy3 = PopIntAt(0);
+                            int dy1 = PopIntAt(0), dx2 = PopIntAt(0), dy2 = PopIntAt(0), dy3 = PopIntAt(0);
                             double x1 = _x, y1 = _y + dy1;
-                            double x2 = x1, y2 = y1 + dy2;
-                            double x3 = x2 + dx3, y3 = y2 + dy3;
+                            double x2 = x1 + dx2, y2 = y1 + dy2;
+                            double x3 = x2, y3 = y2 + dy3;
                             FlattenCubicTo(x1, y1, x2, y2, x3, y3);
                             _x = x3; _y = y3;
                         }
                     }
                     break;
 
-                case 26: // hvcurveto
+                case 31: // hvcurveto
                     {
                         int cnt = _stack.Count;
-                        if (cnt > 0 && !_widthParsed && (cnt % 2 == 1))
-                        { _widthParsed = true; _stack.RemoveAt(0); }
-                        bool hzFirst = true;
+                        if (!_widthParsed)
+                        {
+                            _widthParsed = true;
+                            if (cnt % 4 == 2) _stack.RemoveAt(0);
+                        }
+                        bool verticalFirst = false;
                         EnsureContour();
                         while (_stack.Count >= 4)
                         {
-                            int a = PopIntAt(0), b = PopIntAt(0), c = PopIntAt(0), d = PopIntAt(0);
-                            if (hzFirst)
+                            double x1, y1;
+                            if (verticalFirst)
                             {
-                                double x1 = _x + a, y1 = _y;
-                                double x2 = x1, y2 = y1 + b;
-                                double x3 = x2 + c, y3 = y2 + d;
-                                FlattenCubicTo(x1, y1, x2, y2, x3, y3);
-                                _x = x3; _y = y3;
+                                y1 = _y + PopIntAt(0);
+                                x1 = _x;
                             }
                             else
                             {
-                                double x1 = _x, y1 = _y + a;
-                                double x2 = x1 + b, y2 = y1;
-                                double x3 = x2 + c, y3 = y2 + d;
-                                FlattenCubicTo(x1, y1, x2, y2, x3, y3);
-                                _x = x3; _y = y3;
+                                x1 = _x + PopIntAt(0);
+                                y1 = _y;
                             }
-                            hzFirst = !hzFirst;
+
+                            double x2 = x1 + PopIntAt(0);
+                            double y2 = y1 + PopIntAt(0);
+                            double x3, y3;
+
+                            if (verticalFirst)
+                            {
+                                x3 = x2 + PopIntAt(0);
+                                y3 = y2;
+                            }
+                            else
+                            {
+                                x3 = x2;
+                                y3 = y2 + PopIntAt(0);
+                            }
+
+                            if (_stack.Count == 1)
+                            {
+                                if (verticalFirst) y3 += PopIntAt(0);
+                                else x3 += PopIntAt(0);
+                            }
+
+                            FlattenCubicTo(x1, y1, x2, y2, x3, y3);
+                            _x = x3; _y = y3;
+                            verticalFirst = !verticalFirst;
                         }
                     }
                     break;
@@ -545,15 +588,20 @@ internal sealed class CffTable
                 case 27: // hhcurveto
                     {
                         int cnt = _stack.Count;
-                        if (cnt > 0 && !_widthParsed && (cnt % 2 == 1))
-                        { _widthParsed = true; _stack.RemoveAt(0); }
+                        if (!_widthParsed)
+                        {
+                            _widthParsed = true;
+                            if (cnt % 4 == 2) _stack.RemoveAt(0);
+                        }
                         EnsureContour();
+                        if ((_stack.Count & 1) == 1)
+                            _y += PopIntAt(0); // optional dy1 for first curve only
                         while (_stack.Count >= 4)
                         {
-                            int dx1 = PopIntAt(0), dx2 = PopIntAt(0), dx3 = PopIntAt(0), dy3 = PopIntAt(0);
+                            int dx1 = PopIntAt(0), dx2 = PopIntAt(0), dy2 = PopIntAt(0), dx3 = PopIntAt(0);
                             double x1 = _x + dx1, y1 = _y;
-                            double x2 = x1 + dx2, y2 = y1;
-                            double x3 = x2 + dx3, y3 = y2 + dy3;
+                            double x2 = x1 + dx2, y2 = y1 + dy2;
+                            double x3 = x2 + dx3, y3 = y2;
                             FlattenCubicTo(x1, y1, x2, y2, x3, y3);
                             _x = x3; _y = y3;
                         }
@@ -563,51 +611,52 @@ internal sealed class CffTable
                 case 30: // vhcurveto
                     {
                         int cnt = _stack.Count;
-                        if (cnt > 0 && !_widthParsed && (cnt % 2 == 1))
-                        { _widthParsed = true; _stack.RemoveAt(0); }
-                        bool vtFirst = true;
+                        if (!_widthParsed)
+                        {
+                            _widthParsed = true;
+                            if (cnt % 4 == 2) _stack.RemoveAt(0);
+                        }
+                        bool verticalFirst = true;
                         EnsureContour();
                         while (_stack.Count >= 4)
                         {
-                            int a = PopIntAt(0), b = PopIntAt(0), c = PopIntAt(0), d = PopIntAt(0);
-                            if (vtFirst)
+                            double x1, y1;
+                            if (verticalFirst)
                             {
-                                double x1 = _x, y1 = _y + a;
-                                double x2 = x1 + b, y2 = y1;
-                                double x3 = x2, y3 = y2 + c;
-                                double x4 = x3 + d, y4 = y3;
-                                FlattenCubicTo(x1, y1, x2, y2, x3, y3);
-                                _x = x4; _y = y4;
+                                y1 = _y + PopIntAt(0);
+                                x1 = _x;
                             }
                             else
                             {
-                                double x1 = _x + a, y1 = _y;
-                                double x2 = x1, y2 = y1 + b;
-                                double x3 = x2 + c, y3 = y2;
-                                double x4 = x3, y4 = y3 + d;
-                                FlattenCubicTo(x1, y1, x2, y2, x3, y3);
-                                _x = x4; _y = y4;
+                                x1 = _x + PopIntAt(0);
+                                y1 = _y;
                             }
-                            vtFirst = !vtFirst;
-                        }
-                    }
-                    break;
 
-                case 31: // hflex
-                    {
-                        int cnt = _stack.Count;
-                        if (cnt == 7) { _widthParsed = true; _stack.RemoveAt(0); }
-                        if (_stack.Count >= 6)
-                        {
-                            int dx1 = PopIntAt(0), dx2 = PopIntAt(0), dx3 = PopIntAt(0);
-                            int dx4 = PopIntAt(0), dx5 = PopIntAt(0), dx6 = PopIntAt(0);
-                            EnsureContour();
-                            double x1 = _x + dx1, x2 = x1 + dx2, x3 = x2 + dx3;
-                            FlattenCubicTo(x1, _y, x2, _y, x3, _y); _x = x3;
-                            double x4 = _x + dx4, x5 = x4 + dx5, x6 = x5 + dx6;
-                            FlattenCubicTo(x4, _y, x5, _y, x6, _y); _x = x6;
+                            double x2 = x1 + PopIntAt(0);
+                            double y2 = y1 + PopIntAt(0);
+                            double x3, y3;
+
+                            if (verticalFirst)
+                            {
+                                x3 = x2 + PopIntAt(0);
+                                y3 = y2;
+                            }
+                            else
+                            {
+                                x3 = x2;
+                                y3 = y2 + PopIntAt(0);
+                            }
+
+                            if (_stack.Count == 1)
+                            {
+                                if (verticalFirst) y3 += PopIntAt(0);
+                                else x3 += PopIntAt(0);
+                            }
+
+                            FlattenCubicTo(x1, y1, x2, y2, x3, y3);
+                            _x = x3; _y = y3;
+                            verticalFirst = !verticalFirst;
                         }
-                        else { _stack.Clear(); }
                     }
                     break;
             }
@@ -622,8 +671,159 @@ internal sealed class CffTable
                 case 2: // vstem3 / hstem3
                     if (!_widthParsed) { _widthParsed = true; if (_stack.Count % 2 == 1) _stack.RemoveAt(0); }
                     _hintCount += _stack.Count / 2; _stack.Clear(); break;
+                case 3: // and
+                    if (_stack.Count >= 2)
+                    {
+                        double b = PopDouble();
+                        double a = PopDouble();
+                        _stack.Add((Math.Abs(a) > double.Epsilon && Math.Abs(b) > double.Epsilon) ? 1 : 0);
+                    }
+                    break;
+                case 4: // or
+                    if (_stack.Count >= 2)
+                    {
+                        double b = PopDouble();
+                        double a = PopDouble();
+                        _stack.Add((Math.Abs(a) > double.Epsilon || Math.Abs(b) > double.Epsilon) ? 1 : 0);
+                    }
+                    break;
+                case 5: // not
+                    if (_stack.Count >= 1)
+                    {
+                        double a = PopDouble();
+                        _stack.Add(Math.Abs(a) <= double.Epsilon ? 1 : 0);
+                    }
+                    break;
+                case 9: // abs
+                    if (_stack.Count >= 1)
+                        _stack.Add(Math.Abs(PopDouble()));
+                    break;
+                case 10: // add
+                    if (_stack.Count >= 2)
+                    {
+                        double b = PopDouble();
+                        double a = PopDouble();
+                        _stack.Add(a + b);
+                    }
+                    break;
+                case 11: // sub
+                    if (_stack.Count >= 2)
+                    {
+                        double b = PopDouble();
+                        double a = PopDouble();
+                        _stack.Add(a - b);
+                    }
+                    break;
+                case 12: // div
+                    if (_stack.Count >= 2)
+                    {
+                        double b = PopDouble();
+                        double a = PopDouble();
+                        _stack.Add(Math.Abs(b) <= double.Epsilon ? 0 : a / b);
+                    }
+                    break;
+                case 14: // neg
+                    if (_stack.Count >= 1)
+                        _stack.Add(-PopDouble());
+                    break;
+                case 15: // eq
+                    if (_stack.Count >= 2)
+                    {
+                        double b = PopDouble();
+                        double a = PopDouble();
+                        _stack.Add(Math.Abs(a - b) <= double.Epsilon ? 1 : 0);
+                    }
+                    break;
+                case 18: // drop
+                    if (_stack.Count >= 1) _stack.RemoveAt(_stack.Count - 1);
+                    break;
+                case 20: // put (val i)
+                    if (_stack.Count >= 2)
+                    {
+                        int idx = Math.Clamp(PopInt(), 0, _transient.Length - 1);
+                        _transient[idx] = PopDouble();
+                    }
+                    break;
+                case 21: // get (i -> val)
+                    if (_stack.Count >= 1)
+                    {
+                        int idx = Math.Clamp(PopInt(), 0, _transient.Length - 1);
+                        _stack.Add(_transient[idx]);
+                    }
+                    break;
+                case 22: // ifelse (s1 s2 v1 v2 -> s1|s2)
+                    if (_stack.Count >= 4)
+                    {
+                        double v2 = PopDouble();
+                        double v1 = PopDouble();
+                        double s2 = PopDouble();
+                        double s1 = PopDouble();
+                        _stack.Add(v1 <= v2 ? s1 : s2);
+                    }
+                    break;
+                case 23: // random
+                    _stack.Add(Random.Shared.NextDouble());
+                    break;
+                case 24: // mul
+                    if (_stack.Count >= 2)
+                    {
+                        double b = PopDouble();
+                        double a = PopDouble();
+                        _stack.Add(a * b);
+                    }
+                    break;
+                case 26: // sqrt
+                    if (_stack.Count >= 1)
+                        _stack.Add(Math.Sqrt(Math.Max(0, PopDouble())));
+                    break;
+                case 27: // dup
+                    if (_stack.Count >= 1)
+                        _stack.Add(_stack[^1]);
+                    break;
+                case 28: // exch
+                    if (_stack.Count >= 2)
+                    {
+                        (_stack[^2], _stack[^1]) = (_stack[^1], _stack[^2]);
+                    }
+                    break;
+                case 29: // index
+                    if (_stack.Count >= 1)
+                    {
+                        int i = Math.Max(PopInt(), 0);
+                        int idx = _stack.Count - 1 - i;
+                        _stack.Add(idx >= 0 ? _stack[idx] : _stack[0]);
+                    }
+                    break;
+                case 30: // roll
+                    if (_stack.Count >= 2)
+                    {
+                        int j = PopInt();
+                        int n = PopInt();
+                        Roll(n, j);
+                    }
+                    break;
 
-                case 4: // flex
+                case 34: // hflex
+                    {
+                        int cnt = _stack.Count;
+                        if (cnt == 8) { _widthParsed = true; _stack.RemoveAt(0); }
+                        if (_stack.Count >= 7)
+                        {
+                            int dx1 = PopIntAt(0), dx2 = PopIntAt(0), dy2 = PopIntAt(0);
+                            int dx3 = PopIntAt(0), dx4 = PopIntAt(0), dx5 = PopIntAt(0), dx6 = PopIntAt(0);
+                            EnsureContour();
+                            double x1 = _x + dx1;
+                            double x2 = x1 + dx2, y2 = _y + dy2;
+                            double x3 = x2 + dx3;
+                            FlattenCubicTo(x1, _y, x2, y2, x3, _y); _x = x3;
+                            double x4 = _x + dx4, x5 = x4 + dx5, x6 = x5 + dx6;
+                            FlattenCubicTo(x4, _y, x5, _y, x6, _y); _x = x6;
+                        }
+                        else { _stack.Clear(); }
+                    }
+                    break;
+
+                case 35: // flex
                     {
                         int cnt = _stack.Count;
                         if (cnt == 14) { _widthParsed = true; _stack.RemoveAt(0); }
@@ -645,7 +845,7 @@ internal sealed class CffTable
                     }
                     break;
 
-                case 5: // hflex1
+                case 36: // hflex1
                     {
                         int cnt = _stack.Count;
                         if (cnt == 10) { _widthParsed = true; _stack.RemoveAt(0); }
@@ -665,7 +865,7 @@ internal sealed class CffTable
                     }
                     break;
 
-                case 6: // flex1
+                case 37: // flex1
                     {
                         int cnt = _stack.Count;
                         if (cnt == 12) { _widthParsed = true; _stack.RemoveAt(0); }
@@ -676,12 +876,15 @@ internal sealed class CffTable
                             double dx3 = PopIntAt(0), dy3 = PopIntAt(0);
                             double dx4 = PopIntAt(0), dy4 = PopIntAt(0);
                             double dx5 = PopIntAt(0), dy5 = PopIntAt(0);
-                            double dx6 = PopIntAt(0);
-                            double dy6 = -(dy1 + dy2 + dy3 + dy4 + dy5);
+                            double d6 = PopIntAt(0);
                             EnsureContour();
                             double x1 = _x + dx1, y1 = _y + dy1, x2 = x1 + dx2, y2 = y1 + dy2, x3 = x2 + dx3, y3 = y2 + dy3;
                             FlattenCubicTo(x1, y1, x2, y2, x3, y3); _x = x3; _y = y3;
-                            double x4 = _x + dx4, y4 = _y + dy4, x5 = x4 + dx5, y5 = y4 + dy5, x6 = x5 + dx6, y6f = _y + dy6;
+                            double x4 = _x + dx4, y4 = _y + dy4, x5 = x4 + dx5, y5 = y4 + dy5;
+                            double sumDx = dx1 + dx2 + dx3 + dx4 + dx5;
+                            double sumDy = dy1 + dy2 + dy3 + dy4 + dy5;
+                            double x6 = Math.Abs(sumDx) > Math.Abs(sumDy) ? x5 + d6 : x5;
+                            double y6f = Math.Abs(sumDx) > Math.Abs(sumDy) ? y5 : y5 + d6;
                             FlattenCubicTo(x4, y4, x5, y5, x6, y6f); _x = x6; _y = y6f;
                         }
                         else { _stack.Clear(); }
@@ -760,7 +963,7 @@ internal sealed class CffTable
             double dx = x3 - x0, dy = y3 - y0, len2 = dx * dx + dy * dy;
 
             // Depth limit: force-add endpoint to avoid gaps in the contour.
-            if (depth > 10)
+            if (depth > 14)
             {
                 contour.Add(MakePoint(x3, y3, true));
                 return;
@@ -777,7 +980,9 @@ internal sealed class CffTable
                      + Math.Abs((x2 - x0) * dy - (y2 - y0) * dx);
 
             // Flat enough: approximate with a straight line segment to the endpoint.
-            if (d * d < len2 * 0.5)
+            // Keep CFF cubic curves sufficiently dense; loose flattening creates
+            // visible triangular artifacts on rounded glyph parts.
+            if (d * d < len2 * 0.02)
             {
                 contour.Add(MakePoint(x3, y3, true));
                 return;
@@ -802,6 +1007,19 @@ internal sealed class CffTable
 
         private int PopInt() { if (_stack.Count == 0) return 0; double v = _stack[^1]; _stack.RemoveAt(_stack.Count - 1); return (int)Math.Round(v); }
         private int PopIntAt(int idx) { if (idx < 0 || idx >= _stack.Count) return 0; double v = _stack[idx]; _stack.RemoveAt(idx); return (int)Math.Round(v); }
+        private double PopDouble() { if (_stack.Count == 0) return 0; double v = _stack[^1]; _stack.RemoveAt(_stack.Count - 1); return v; }
+
+        private void Roll(int n, int j)
+        {
+            if (n <= 0 || n > _stack.Count || j == 0) return;
+            int start = _stack.Count - n;
+            int r = ((j % n) + n) % n;
+            if (r == 0) return;
+
+            var temp = _stack.GetRange(start, n);
+            for (int i = 0; i < n; i++)
+                _stack[start + i] = temp[(i - r + n) % n];
+        }
 
         private void InterpSubr(byte[] subrData)
         {
@@ -819,7 +1037,7 @@ internal sealed class CffTable
                 else if (b0 == 12)
                 {
                     // Escape prefix: subroutines may legally contain flex/hflex/hflex1/flex1
-                    // (escape 4/5/6) and hstem3/vstem3 (escape 1/2). Without this branch those
+                    // (escape 34/35/36/37). Without this branch those
                     // operators would fall through to ProcessOp (which has no case 12), and the
                     // escape parameter byte would be pushed onto the operand stack as a number,
                     // desyncing all subsequent interpretation and producing garbled glyphs.
@@ -827,8 +1045,16 @@ internal sealed class CffTable
                     int b1 = subrData[ip++];
                     ProcessEscapeOp(b1);
                 }
+                else if (b0 == 255)
+                {
+                    if (ip + 3 >= subrData.Length) break;
+                    int fixed1616 = (subrData[ip] << 24) | (subrData[ip + 1] << 16) |
+                                    (subrData[ip + 2] << 8) | subrData[ip + 3];
+                    ip += 4;
+                    _stack.Add(fixed1616 / 65536.0);
+                }
                 else if (b0 == 14) { CloseContour(); _done = true; return; }
-                else if (b0 == 18 || b0 == 19)
+                else if (b0 == 19 || b0 == 20)
                 {
                     if (!_widthParsed)
                     {
@@ -990,15 +1216,19 @@ internal sealed class CffTable
         while (i < dictData.Length)
         {
             int b0 = dictData[i++];
-            if (b0 <= 21)
-            {
-                if (operands.Count > 0) { result[b0] = new List<double>(operands); operands.Clear(); }
-            }
-            else if (b0 == 12)
+            if (b0 == 12)
             {
                 if (i >= dictData.Length) break;
                 int b1 = dictData[i++];
                 if (operands.Count > 0) { result[1200 + b1] = new List<double>(operands); operands.Clear(); }
+            }
+            else if (b0 <= 21)
+            {
+                if (operands.Count > 0) { result[b0] = new List<double>(operands); operands.Clear(); }
+            }
+            else if (b0 == 30)
+            {
+                operands.Add(ReadDictRealNumber(dictData, ref i));
             }
             else if (b0 == 28) { if (i + 1 >= dictData.Length) break; operands.Add((short)((dictData[i] << 8) | dictData[i + 1])); i += 2; }
             else if (b0 == 29) { if (i + 3 >= dictData.Length) break; int v = (dictData[i] << 24) | (dictData[i + 1] << 16) | (dictData[i + 2] << 8) | dictData[i + 3]; i += 4; operands.Add(v); }
@@ -1007,6 +1237,60 @@ internal sealed class CffTable
             else if (b0 >= 251 && b0 <= 254) { if (i >= dictData.Length) break; operands.Add(-(b0 - 251) * 256 - dictData[i++] - 108); }
         }
         return result;
+    }
+
+    private static double ReadDictRealNumber(byte[] data, ref int i)
+    {
+        Span<char> buffer = stackalloc char[64];
+        int len = 0;
+
+        while (i < data.Length)
+        {
+            int b = data[i++];
+            int hi = (b >> 4) & 0xF;
+            int lo = b & 0xF;
+
+            if (!AppendDictRealNibble(hi, buffer, ref len)) break;
+            if (!AppendDictRealNibble(lo, buffer, ref len)) break;
+        }
+
+        if (len == 0) return 0;
+        var s = new string(buffer[..len]);
+        return double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0;
+    }
+
+    private static bool AppendDictRealNibble(int nibble, Span<char> buffer, ref int len)
+    {
+        if (nibble is >= 0 and <= 9)
+        {
+            if (len < buffer.Length) buffer[len++] = (char)('0' + nibble);
+            return true;
+        }
+
+        char ch = nibble switch
+        {
+            0xA => '.',
+            0xB => 'E',
+            0xC => 'e', // we'll append '-' next
+            0xE => '-',
+            0xF => '\0',
+            _ => '\0'
+        };
+
+        if (nibble == 0xC)
+        {
+            if (len + 2 <= buffer.Length)
+            {
+                buffer[len++] = 'E';
+                buffer[len++] = '-';
+            }
+            return true;
+        }
+
+        if (nibble == 0xF) return false;
+        if (ch == '\0') return true; // ignore reserved nibble 0xD
+        if (len < buffer.Length) buffer[len++] = ch;
+        return true;
     }
 
     private static int GetDictOffset(Dictionary<int, List<double>> dict, int op)
@@ -1079,15 +1363,14 @@ internal sealed class CffTable
             int pos = offset + 1;
             int nRanges = (data[pos] << 8) | data[pos + 1];
             pos += 2;
-            int prevGlyph = 0, prevFD = 0;
             for (int r = 0; r < nRanges; r++)
             {
                 int firstGlyph = (data[pos] << 8) | data[pos + 1]; pos += 2;
-                int fd = (data[pos] << 8) | data[pos + 1]; pos += 2;
-                for (int g = prevGlyph; g < firstGlyph && g < numGlyphs; g++) fdSelect[g] = prevFD;
-                prevGlyph = firstGlyph; prevFD = fd;
+                int fd = data[pos++];
+                int nextFirstGlyph = (data[pos] << 8) | data[pos + 1];
+                for (int g = firstGlyph; g < nextFirstGlyph && g < numGlyphs; g++)
+                    fdSelect[g] = fd;
             }
-            for (int g = prevGlyph; g < numGlyphs; g++) fdSelect[g] = prevFD;
         }
         else throw new InvalidFontFileException($"Unsupported FDSelect format: {format}");
 
