@@ -1,6 +1,7 @@
 using projectFrameCut.Drawing.Text.FontHelper;
 using projectFrameCut.Drawing.Text.FontHelper.Table;
 using System.Globalization;
+using System.Threading;
 
 namespace projectFrameCut.Drawing.Tests;
 
@@ -368,5 +369,108 @@ public sealed class FontHelperTests
         // Data too small, will throw from SfntReader constructor first
         Assert.ThrowsExactly<InvalidFontFileException>(() =>
             FontFace.Load(data));
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void FontFace_AutoDispose_GlobalAndPerInstanceEnabled_UnloadsAndReloads()
+    {
+        const string fontPath = @"C:\Windows\Fonts\arial.ttf";
+        if (!File.Exists(fontPath))
+            Assert.Inconclusive($"Arial not present at {fontPath}; skipping integration test.");
+
+        bool globalBackup = FontFace.GlobalAutoDisposeEnabled;
+        TimeSpan timeoutBackup = FontFace.AutoDisposeIdleTimeout;
+
+        try
+        {
+            using var font = FontFace.Load(fontPath);
+            font.AutoDisposeEnabled = true;
+
+            FontFace.GlobalAutoDisposeEnabled = true;
+            FontFace.AutoDisposeIdleTimeout = TimeSpan.FromMilliseconds(1);
+
+            Thread.Sleep(10);
+            FontFace.RunAutoDisposeSweep();
+
+            Assert.IsNull(GetSfntReaderField(font));
+
+            _ = font.TryGetGlyphBounds(1, out _, out _, out _, out _);
+            Assert.IsNotNull(GetSfntReaderField(font));
+        }
+        finally
+        {
+            FontFace.GlobalAutoDisposeEnabled = globalBackup;
+            FontFace.AutoDisposeIdleTimeout = timeoutBackup;
+        }
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void FontFace_AutoDispose_PerInstanceDisabled_DoesNotUnload()
+    {
+        const string fontPath = @"C:\Windows\Fonts\arial.ttf";
+        if (!File.Exists(fontPath))
+            Assert.Inconclusive($"Arial not present at {fontPath}; skipping integration test.");
+
+        bool globalBackup = FontFace.GlobalAutoDisposeEnabled;
+        TimeSpan timeoutBackup = FontFace.AutoDisposeIdleTimeout;
+
+        try
+        {
+            using var font = FontFace.Load(fontPath);
+            font.AutoDisposeEnabled = false;
+
+            FontFace.GlobalAutoDisposeEnabled = true;
+            FontFace.AutoDisposeIdleTimeout = TimeSpan.FromMilliseconds(1);
+
+            Thread.Sleep(10);
+            FontFace.RunAutoDisposeSweep();
+
+            Assert.IsNotNull(GetSfntReaderField(font));
+        }
+        finally
+        {
+            FontFace.GlobalAutoDisposeEnabled = globalBackup;
+            FontFace.AutoDisposeIdleTimeout = timeoutBackup;
+        }
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void FontFace_AutoDispose_GlobalDisabled_DoesNotUnload()
+    {
+        const string fontPath = @"C:\Windows\Fonts\arial.ttf";
+        if (!File.Exists(fontPath))
+            Assert.Inconclusive($"Arial not present at {fontPath}; skipping integration test.");
+
+        bool globalBackup = FontFace.GlobalAutoDisposeEnabled;
+        TimeSpan timeoutBackup = FontFace.AutoDisposeIdleTimeout;
+
+        try
+        {
+            using var font = FontFace.Load(fontPath);
+            font.AutoDisposeEnabled = true;
+
+            FontFace.GlobalAutoDisposeEnabled = false;
+            FontFace.AutoDisposeIdleTimeout = TimeSpan.FromMilliseconds(1);
+
+            Thread.Sleep(10);
+            FontFace.RunAutoDisposeSweep();
+
+            Assert.IsNotNull(GetSfntReaderField(font));
+        }
+        finally
+        {
+            FontFace.GlobalAutoDisposeEnabled = globalBackup;
+            FontFace.AutoDisposeIdleTimeout = timeoutBackup;
+        }
+    }
+
+    private static object? GetSfntReaderField(FontFace font)
+    {
+        var field = typeof(FontFace).GetField("_sfnt", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(field);
+        return field.GetValue(font);
     }
 }

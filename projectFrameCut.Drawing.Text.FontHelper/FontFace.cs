@@ -1,6 +1,7 @@
 using projectFrameCut.Drawing.Text.FontHelper.Reader;
 using projectFrameCut.Drawing.Text.FontHelper.Table;
 using System.Diagnostics;
+using System.Threading;
 
 namespace projectFrameCut.Drawing.Text.FontHelper;
 
@@ -8,7 +9,21 @@ namespace projectFrameCut.Drawing.Text.FontHelper;
 [DebuggerDisplay("{DisplayName} ({UniqueName})")]
 public sealed class FontFace : IDisposable
 {
-    private readonly SfntReader _sfnt;
+    private static readonly object s_registryLock = new();
+    private static readonly List<WeakReference<FontFace>> s_registry = [];
+    private static readonly Timer s_autoDisposeTimer = new(
+        static _ => SweepAutoDisposeCandidates(), null,
+        TimeSpan.FromSeconds(6000), TimeSpan.FromSeconds(6000));
+    static FontFace()
+    {
+        _ = s_autoDisposeTimer;
+    }
+
+    private SfntReader? _sfnt;
+    private readonly object _stateLock = new();
+    private DateTime _lastAccessUtc;
+    private readonly string? _sourcePath;
+    private readonly int _sfntOffset;
     private readonly HeadData _head;
     private readonly MaxpData _maxp;
     private readonly HmtxData _hmtx;
@@ -16,19 +31,39 @@ public sealed class FontFace : IDisposable
     private readonly Os2Data _os2;
     private readonly CmapData _cmap;
     private readonly LocaData? _loca;
-    private readonly byte[]? _glyfData;
-    private readonly CffTable? _cff;
-    private readonly VariationEngine? _variation;
+    private readonly bool _hasGlyf;
+    private readonly bool _hasCff;
+    private CffTable? _cff;
+    private readonly bool _hasFvar;
+    private VariationEngine? _variation;
+    private bool _variationInitialized;
+    private bool _isVariableFont;
     private readonly IReadOnlySet<TargetLanguage> _targetLanguages;
     private readonly IReadOnlyDictionary<TargetLanguage, string> _localizedNames;
     private bool _disposed;
 
+    /// <summary>Global switch for inactivity-based automatic unloading.</summary>
+    public static bool GlobalAutoDisposeEnabled { get; set; }
+
+    /// <summary>Idle duration before automatic unloading is triggered.</summary>
+    public static TimeSpan AutoDisposeIdleTimeout { get; set; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>Per-font switch for inactivity-based automatic unloading.</summary>
+    public bool AutoDisposeEnabled { get; set { if(!SupportsAutoReloadFromDisk) throw new InvalidOperationException("AutoDispose can only be enabled for fonts that support auto-reload from disk."); field = value; } } = true;
+
+    /// <summary>Whether this font instance can reload itself from disk after auto-unload.</summary>
+    public bool SupportsAutoReloadFromDisk => _sourcePath is not null;
+
     /// <summary>Whether this font uses CFF outlines (PostScript-based OTF).</summary>
-    public bool IsCff => _cff != null;
+    public bool IsCff => _hasCff;
 
     internal FontFace(SfntReader sfnt)
     {
         _sfnt = sfnt;
+        _sourcePath = sfnt.SourcePath;
+        _sfntOffset = sfnt.SfntOffset;
+        _lastAccessUtc = DateTime.UtcNow;
+        RegisterForAutoDispose(this);
 
         // Parse all tables (required ones throw if missing)
         _head = HeadTable.Parse(sfnt.GetTableData("head"));
@@ -41,15 +76,11 @@ public sealed class FontFace : IDisposable
             _maxp.NumGlyphs);
 
         // CFF-based OpenType fonts (OTTO) use "CFF " instead of "loca"+"glyf"
+        _hasGlyf = sfnt.HasTable("glyf");
+        _hasCff = sfnt.HasTable("CFF ");
+
         _loca = sfnt.HasTable("loca")
             ? LocaTable.Parse(sfnt.GetTableData("loca"), _maxp.NumGlyphs, _head.IndexToLocFormat)
-            : null;
-
-        _glyfData = sfnt.HasTable("glyf") ? sfnt.GetTableDataCopy("glyf") : null;
-
-        // Parse CFF table if present (CFF-based OTFs)
-        _cff = sfnt.HasTable("CFF ")
-            ? CffTable.Load(sfnt.GetTableDataCopy("CFF "), _maxp.NumGlyphs)
             : null;
 
         _cmap = CmapTable.Parse(sfnt.GetTableData("cmap"));
@@ -77,9 +108,7 @@ public sealed class FontFace : IDisposable
             : new Os2Data(400, 5, 0, 0, 0, 0);
 
         // Variable font support: initialize VariationEngine if fvar table exists
-        _variation = sfnt.HasTable("fvar")
-            ? new VariationEngine(this, sfnt)
-            : null;
+        _hasFvar = sfnt.HasTable("fvar");
 
 
     }
@@ -104,7 +133,38 @@ public sealed class FontFace : IDisposable
 
     /// <summary>Auto-detect and load fonts from a file path (supports .ttf, .otf, .ttc).</summary>
     public static FontFace[] AutoLoad(string path)
-        => AutoLoad(File.ReadAllBytes(path), Path.GetExtension(path).ToLower());
+    {
+        string extension = Path.GetExtension(path).ToLowerInvariant();
+        bool ttfSeen = false, ttcSeen = false;
+        if (extension == ".ttc") goto ttc;
+        else if (extension == ".otf" || extension == ".ttf") goto ttf;
+
+    ttf:
+        try
+        {
+            ttfSeen = true;
+            return [Load(path)];
+        }
+        catch (Exception ex)
+        {
+            if (!ttcSeen) goto ttc;
+            else if (!ttfSeen) throw new InvalidDataException("Data is not a valid TTF or TTC or OTF font.", ex);
+        }
+
+    ttc:
+        try
+        {
+            ttcSeen = true;
+            return FontCollection.Load(path).Select(c => c.Load()).ToArray();
+        }
+        catch (Exception ex)
+        {
+            if (!ttfSeen) goto ttf;
+            else if (!ttcSeen) throw new InvalidDataException("Data is not a valid TTF or TTC or OTF font.", ex);
+        }
+
+        throw new InvalidDataException("Data is not a valid TTF or TTC or OTF font.");
+    }
 
     /// <summary>Auto-detect and load fonts from raw data (supports TTF, OTF, TTC).</summary>
     /// <param name="preferExtension">The preferred file extension to prioritize during auto-detection. Keep empty to auto-detect.</param>
@@ -234,33 +294,62 @@ public sealed class FontFace : IDisposable
     // ── Variable font support ──
 
     /// <summary>Whether this font supports OpenType Font Variations (variable font).</summary>
-    public bool IsVariableFont => _variation?.IsVariable ?? false;
+    public bool IsVariableFont
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            TouchAccess();
+            var variation = EnsureVariationEngineLoaded();
+            return variation?.IsVariable ?? false;
+        }
+    }
 
     /// <summary>The variation axes declared by this font (if variable).</summary>
-    public IReadOnlyList<VariationAxis> VariationAxes =>
-        _variation?.Axes ?? Array.Empty<VariationAxis>();
+    public IReadOnlyList<VariationAxis> VariationAxes
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            TouchAccess();
+            return EnsureVariationEngineLoaded()?.Axes ?? Array.Empty<VariationAxis>();
+        }
+    }
 
     /// <summary>The named instances declared by this font (if variable).</summary>
-    public IReadOnlyList<NamedInstance> NamedInstances =>
-        _variation?.Instances ?? Array.Empty<NamedInstance>();
+    public IReadOnlyList<NamedInstance> NamedInstances
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            TouchAccess();
+            return EnsureVariationEngineLoaded()?.Instances ?? Array.Empty<NamedInstance>();
+        }
+    }
 
     /// <summary>Set a single variation axis by tag.</summary>
     public bool TrySetVariationAxis(string axisTag, float value)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return _variation?.TrySetAxis(axisTag, value) ?? false;
+        TouchAccess();
+        return EnsureVariationEngineLoaded()?.TrySetAxis(axisTag, value) ?? false;
     }
 
     /// <summary>Set multiple variation axes at once. Resets unlisted axes to defaults.</summary>
     public void SetVariationAxes(IReadOnlyDictionary<string, float> axes)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _variation?.SetAxes(axes);
+        TouchAccess();
+        EnsureVariationEngineLoaded()?.SetAxes(axes);
     }
 
     /// <summary>Get the current value of a variation axis (denormalized).</summary>
-    public float GetVariationAxis(string axisTag) =>
-        _variation?.GetAxis(axisTag) ?? 0f;
+    public float GetVariationAxis(string axisTag)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        TouchAccess();
+        return EnsureVariationEngineLoaded()?.GetAxis(axisTag) ?? 0f;
+    }
 
     /// <summary>
     /// Get a glyph with current variations applied.
@@ -270,10 +359,11 @@ public sealed class FontFace : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_variation == null)
+        var variation = EnsureVariationEngineLoaded();
+        if (variation == null)
             return GetGlyph(glyphIndex);
 
-        return _variation.GetVariedGlyph(glyphIndex);
+        return variation.GetVariedGlyph(glyphIndex);
     }
 
     /// <summary>
@@ -283,23 +373,29 @@ public sealed class FontFace : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_variation == null)
+        var variation = EnsureVariationEngineLoaded();
+        if (variation == null)
             return GetAdvanceWidth(glyphIndex);
 
-        return _variation.GetVariedAdvanceWidth(glyphIndex);
+        return variation.GetVariedAdvanceWidth(glyphIndex);
     }
 
     // ── Glyph access ──
 
     /// <summary>Get the glyph index for a Unicode codepoint.</summary>
-    public ushort GetGlyphIndex(char unicodeCodepoint) =>
-        _cmap.GetGlyphIndex((uint)unicodeCodepoint);
+    public ushort GetGlyphIndex(char unicodeCodepoint)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        TouchAccess();
+        return _cmap.GetGlyphIndex((uint)unicodeCodepoint);
+    }
 
     /// <summary>Checks whether the font can actually display the specified character
     /// (i.e., it maps to a real glyph rather than the .notdef glyph).</summary>
     public bool CanDisplayTheChar(char ch)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        TouchAccess();
         return _cmap.GetGlyphIndex(ch) != 0;
     }
 
@@ -307,14 +403,15 @@ public sealed class FontFace : IDisposable
     public Glyph? GetGlyph(ushort glyphIndex)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        TouchAccess();
 
         if (glyphIndex >= _maxp.NumGlyphs)
             throw new ArgumentOutOfRangeException(nameof(glyphIndex));
 
         // CFF-based font
-        if (_cff != null)
+        if (_hasCff)
         {
-            Glyph? glyph = _cff.ParseGlyph(glyphIndex);
+            Glyph? glyph = GetOrLoadCff().ParseGlyph(glyphIndex);
             if (glyph != null)
             {
                 glyph.AdvanceWidth = _hmtx.GetAdvanceWidth(glyphIndex);
@@ -324,7 +421,7 @@ public sealed class FontFace : IDisposable
         }
 
         // TrueType-based font
-        if (_loca == null || _glyfData == null)
+        if (_loca == null || !_hasGlyf)
             return null;
 
         return ParseAndMeasureGlyph(glyphIndex, null);
@@ -341,14 +438,15 @@ public sealed class FontFace : IDisposable
         GlyfTable.VariationApplier variationApplier)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        TouchAccess();
 
         if (glyphIndex >= _maxp.NumGlyphs)
             throw new ArgumentOutOfRangeException(nameof(glyphIndex));
 
         // CFF fonts don't support gvar-style variations (use CFF2 instead)
-        if (_cff != null)
+        if (_hasCff)
         {
-            Glyph? glyph = _cff.ParseGlyph(glyphIndex);
+            Glyph? glyph = GetOrLoadCff().ParseGlyph(glyphIndex);
             if (glyph != null)
             {
                 glyph.AdvanceWidth = _hmtx.GetAdvanceWidth(glyphIndex);
@@ -357,7 +455,7 @@ public sealed class FontFace : IDisposable
             return glyph;
         }
 
-        if (_loca == null || _glyfData == null)
+        if (_loca == null || !_hasGlyf)
             return null;
 
         return ParseAndMeasureGlyph(glyphIndex, variationApplier);
@@ -368,8 +466,10 @@ public sealed class FontFace : IDisposable
         GlyfTable.VariationApplier? variationApplier)
     {
         LocaData loca = _loca!.Value;
+        SfntReader sfnt = EnsureSfntLoaded();
+        ReadOnlySpan<byte> glyfData = sfnt.GetTableData("glyf");
         Glyph? glyph = GlyfTable.ParseGlyph(
-            _glyfData!, loca, glyphIndex, _sfnt, _maxp, 0,
+            glyfData, loca, glyphIndex, sfnt, _maxp, 0,
             variationApplier);
 
         if (glyph != null)
@@ -382,8 +482,12 @@ public sealed class FontFace : IDisposable
     }
 
     /// <summary>Get the advance width for a glyph.</summary>
-    public ushort GetAdvanceWidth(ushort glyphIndex) =>
-        _hmtx.GetAdvanceWidth(glyphIndex);
+    public ushort GetAdvanceWidth(ushort glyphIndex)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        TouchAccess();
+        return _hmtx.GetAdvanceWidth(glyphIndex);
+    }
 
     /// <summary>
     /// Fast retrieval of a glyph's bounding box (in font design units) without
@@ -399,15 +503,16 @@ public sealed class FontFace : IDisposable
         ushort glyphIndex,
         out short xMin, out short yMin, out short xMax, out short yMax)
     {
+        TouchAccess();
         xMin = yMin = xMax = yMax = 0;
 
         if (glyphIndex >= _maxp.NumGlyphs)
             return false;
 
         // CFF-based font — no header-level bbox; fall back to full parse
-        if (_cff is not null)
+        if (_hasCff)
         {
-            Glyph? glyph = _cff.ParseGlyph(glyphIndex);
+            Glyph? glyph = GetOrLoadCff().ParseGlyph(glyphIndex);
             if (glyph is null || glyph.IsEmpty)
                 return false;
             xMin = glyph.XMin;
@@ -418,23 +523,25 @@ public sealed class FontFace : IDisposable
         }
 
         // TrueType-based font — read the 10-byte glyph header
-        if (_loca is null || _glyfData is null)
+        if (_loca is null || !_hasGlyf)
             return false;
+
+        ReadOnlySpan<byte> glyfData = EnsureSfntLoaded().GetTableData("glyf");
 
         uint offset = _loca.Value.GetGlyphOffset(glyphIndex);
         uint length = _loca.Value.GetGlyphLength(glyphIndex);
-        if (length < 10 || offset + length > (uint)_glyfData.Length)
+        if (length < 10 || offset + length > (uint)glyfData.Length)
             return false;
 
         int headerOffset = (int)offset;
-        short numberOfContours = BigEndianReader.ReadInt16(_glyfData, ref headerOffset);
+        short numberOfContours = BigEndianReader.ReadInt16(glyfData, ref headerOffset);
         if (numberOfContours == 0)
             return false;
 
-        xMin = BigEndianReader.ReadInt16(_glyfData, ref headerOffset);
-        short rawYMin = BigEndianReader.ReadInt16(_glyfData, ref headerOffset);
-        xMax = BigEndianReader.ReadInt16(_glyfData, ref headerOffset);
-        short rawYMax = BigEndianReader.ReadInt16(_glyfData, ref headerOffset);
+        xMin = BigEndianReader.ReadInt16(glyfData, ref headerOffset);
+        short rawYMin = BigEndianReader.ReadInt16(glyfData, ref headerOffset);
+        xMax = BigEndianReader.ReadInt16(glyfData, ref headerOffset);
+        short rawYMax = BigEndianReader.ReadInt16(glyfData, ref headerOffset);
 
         // Y-flip to image space (Y-down)
         yMin = (short)(-rawYMax);
@@ -447,6 +554,7 @@ public sealed class FontFace : IDisposable
     public ushort GetAdvanceWidthViaBounds(ushort glyphIndex)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        TouchAccess();
 
         if (TryGetGlyphBounds(glyphIndex, out var xMin, out _, out var xMax, out _))
         {
@@ -459,6 +567,113 @@ public sealed class FontFace : IDisposable
     }
 
 
+    private CffTable GetOrLoadCff()
+    {
+        if (_cff is not null)
+            return _cff;
+
+        if (!_hasCff)
+            throw new InvalidOperationException("Current font does not contain a CFF table.");
+
+        _cff = CffTable.Load(EnsureSfntLoaded().GetTableData("CFF ").ToArray(), _maxp.NumGlyphs);
+        return _cff;
+    }
+
+    private SfntReader EnsureSfntLoaded()
+    {
+        lock (_stateLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _lastAccessUtc = DateTime.UtcNow;
+
+            if (_sfnt is not null)
+                return _sfnt;
+
+            if (_sourcePath is null)
+                throw new InvalidOperationException(
+                    "Font data was loaded from memory and cannot be automatically reloaded from disk.");
+
+            _sfnt = SfntReader.ReloadFromFile(_sourcePath, _sfntOffset);
+            return _sfnt;
+        }
+    }
+
+    private void TouchAccess()
+    {
+        lock (_stateLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _lastAccessUtc = DateTime.UtcNow;
+        }
+    }
+
+    private VariationEngine? EnsureVariationEngineLoaded()
+    {
+        if (_variationInitialized)
+            return _isVariableFont ? _variation : null;
+
+        _variationInitialized = true;
+        if (!_hasFvar)
+        {
+            _isVariableFont = false;
+            return null;
+        }
+
+        _variation = new VariationEngine(this, EnsureSfntLoaded());
+        _isVariableFont = _variation.IsVariable;
+        return _isVariableFont ? _variation : null;
+    }
+
+    private static void RegisterForAutoDispose(FontFace font)
+    {
+        lock (s_registryLock)
+        {
+            s_registry.Add(new WeakReference<FontFace>(font));
+        }
+    }
+
+    internal static void SweepAutoDisposeCandidates(bool ignoreAllConditions = false)
+    {
+        if (!ignoreAllConditions && (!GlobalAutoDisposeEnabled || AutoDisposeIdleTimeout <= TimeSpan.Zero))
+            return;
+
+        lock (s_registryLock)
+        {
+            for (int i = s_registry.Count - 1; i >= 0; i--)
+            {
+                if (!s_registry[i].TryGetTarget(out var font))
+                {
+                    s_registry.RemoveAt(i);
+                    continue;
+                }
+
+                font.TryAutoUnload();
+            }
+        }
+    }
+
+    /// <summary>Immediately runs one auto-dispose sweep across all tracked font faces.</summary>
+    public static void RunAutoDisposeSweep() => SweepAutoDisposeCandidates();
+
+    private void TryAutoUnload()
+    {
+        lock (_stateLock)
+        {
+            if (_disposed || !AutoDisposeEnabled || _sourcePath is null || _sfnt is null)
+                return;
+
+            if (DateTime.UtcNow - _lastAccessUtc < AutoDisposeIdleTimeout)
+                return;
+
+            _sfnt.Dispose();
+            _sfnt = null;
+            _cff = null;
+            _variation = null;
+            _variationInitialized = false;
+        }
+    }
+
+
     // ── IDisposable ──
 
     /// <summary>Release all resources held by this font face.</summary>
@@ -467,7 +682,14 @@ public sealed class FontFace : IDisposable
         if (!_disposed)
         {
             _disposed = true;
-            _sfnt.Dispose();
+            lock (_stateLock)
+            {
+                _sfnt?.Dispose();
+                _sfnt = null;
+                _cff = null;
+                _variation = null;
+                _variationInitialized = false;
+            }
         }
     }
 }

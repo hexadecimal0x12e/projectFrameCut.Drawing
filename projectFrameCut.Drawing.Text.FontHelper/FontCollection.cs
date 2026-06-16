@@ -20,10 +20,13 @@ public sealed class FontCollection : IEnumerable<FontFaceInfo>
 
     /// <summary>Load a TTC file from disk.</summary>
     public static FontCollection Load(string path) =>
-        Load(File.ReadAllBytes(path));
+        Load(File.ReadAllBytes(path), path);
 
     /// <summary>Load a TTC file from a byte array.</summary>
     public static FontCollection Load(byte[] data)
+        => Load(data, null);
+
+    private static FontCollection Load(byte[] data, string? sourcePath)
     {
         int offset = 0;
         uint tag = BigEndianReader.ReadUInt32(data, ref offset);
@@ -47,7 +50,7 @@ public sealed class FontCollection : IEnumerable<FontFaceInfo>
 
         var fonts = new FontFaceInfo[numFonts];
         for (int i = 0; i < numFonts; i++)
-            fonts[i] = new FontFaceInfo(data, (int)fontOffsets[i], i);
+            fonts[i] = new FontFaceInfo(data, (int)fontOffsets[i], i, sourcePath);
 
         return new FontCollection(fonts);
     }
@@ -77,11 +80,13 @@ public sealed class FontFaceInfo
 {
     private readonly byte[] _data;
     private readonly int _sfntOffset;
+    private readonly string? _sourcePath;
 
-    internal FontFaceInfo(byte[] data, int sfntOffset, int index)
+    internal FontFaceInfo(byte[] data, int sfntOffset, int index, string? sourcePath)
     {
         _data = data;
         _sfntOffset = sfntOffset;
+        _sourcePath = sourcePath;
         Index = index;
 
         // Eagerly parse the "name" table to populate metadata
@@ -182,7 +187,7 @@ public sealed class FontFaceInfo
     /// <summary>Load the full <see cref="FontFace"/> for this font.</summary>
     public FontFace Load()
     {
-        var reader = new SfntReader(_data, _sfntOffset);
+        var reader = new SfntReader(_data, _sfntOffset, _sourcePath);
         return new FontFace(reader);
     }
 }

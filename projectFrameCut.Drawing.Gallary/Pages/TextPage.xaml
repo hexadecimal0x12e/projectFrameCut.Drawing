@@ -21,6 +21,7 @@
                             SelectedIndexChanged="OnFontSelected" FontSize="14" />
                     <Label x:Name="FontCountLabel" Text="正在扫描系统字体..."
                            FontSize="12" TextColor="Gray" />
+                    <Button x:Name="SweepButton" Text="强制清理字体缓存" Clicked="SweepButton_Clicked" />
                 </VerticalStackLayout>
             </Border>
             

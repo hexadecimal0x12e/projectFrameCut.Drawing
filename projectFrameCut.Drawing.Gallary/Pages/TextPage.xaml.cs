@@ -31,7 +31,7 @@ public partial class TextPage : ContentPage
                 try
                 {
                     var fonts = FontFace.AutoLoad(path);
-                    foreach(var f in fonts)
+                    foreach (var f in fonts)
                     {
                         _fonts.Add(f);
                         FontPicker.ItemsSource = _fonts.Select(f => $"{f.DisplayName} {f.SubfamilyName} ({f.TargetLanguages.First().DisplayName})").ToList();
@@ -303,7 +303,7 @@ public partial class TextPage : ContentPage
 
         return new TextEntry
         {
-            Text = (InputText.Text ?? "Hello MAUI!").Replace("\r\n","\n").Replace('\r','\n'),
+            Text = (InputText.Text ?? "Hello MAUI!").Replace("\r\n", "\n").Replace('\r', '\n'),
             FontName = _fonts[FontPicker.SelectedIndex].DisplayName,
             FontSize = (float)SliderFontSize.Value,
             X = (float)SliderX.Value,
@@ -327,4 +327,9 @@ public partial class TextPage : ContentPage
         };
     }
 
+    private async void SweepButton_Clicked(object sender, EventArgs e)
+    {
+        FontFace.SweepAutoDisposeCandidates(await DisplayAlertAsync("Info", "Force sweep?", "yes", "no"));
+        await DisplayAlertAsync("Font Sweep", "Font data has been swept. This can help reduce memory usage if many fonts were loaded. Note: This does not affect already rendered images.", "ok");
+    }
 }

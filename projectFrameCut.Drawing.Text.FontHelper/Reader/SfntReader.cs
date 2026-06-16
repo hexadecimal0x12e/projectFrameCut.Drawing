@@ -7,13 +7,17 @@ internal sealed class SfntReader : IDisposable
 {
     private readonly byte[] _data;
     private readonly Dictionary<string, TableEntry> _tableDirectory;
+    private readonly string? _sourcePath;
+    private readonly int _sfntOffset;
     private bool _disposed;
 
-    private SfntReader(byte[] data) : this(data, 0) { }
+    private SfntReader(byte[] data, string sourcePath) : this(data, 0, sourcePath) { }
 
-    internal SfntReader(byte[] data, int sfntOffset)
+    internal SfntReader(byte[] data, int sfntOffset, string? sourcePath = null)
     {
         _data = data;
+        _sourcePath = sourcePath;
+        _sfntOffset = sfntOffset;
 
         if (sfntOffset + 12 > data.Length)
             throw new InvalidFontFileException("File too small to be a valid font.");
@@ -79,9 +83,12 @@ internal sealed class SfntReader : IDisposable
     }
 
     public static SfntReader Load(string path) =>
-        new(File.ReadAllBytes(path));
+        new(File.ReadAllBytes(path), path);
 
-    public static SfntReader Load(byte[] data) => new(data);
+    public static SfntReader Load(byte[] data) => new(data, 0);
+
+    internal static SfntReader ReloadFromFile(string path, int sfntOffset) =>
+        new(File.ReadAllBytes(path), sfntOffset, path);
 
     public ReadOnlySpan<byte> GetTableData(string tag)
     {
@@ -130,6 +137,9 @@ internal sealed class SfntReader : IDisposable
     {
         _disposed = true;
     }
+
+    internal string? SourcePath => _sourcePath;
+    internal int SfntOffset => _sfntOffset;
 
     private readonly record struct TableEntry(uint Offset, uint Length);
 }
