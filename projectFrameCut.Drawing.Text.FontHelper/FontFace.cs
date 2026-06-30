@@ -13,7 +13,7 @@ public sealed class FontFace : IDisposable
     private static readonly List<WeakReference<FontFace>> s_registry = [];
     private static readonly Timer s_autoDisposeTimer = new(
         static _ => SweepAutoDisposeCandidates(), null,
-        TimeSpan.FromSeconds(6000), TimeSpan.FromSeconds(6000));
+        TimeSpan.FromSeconds(120), TimeSpan.FromSeconds(120));
     static FontFace()
     {
         _ = s_autoDisposeTimer;
@@ -43,7 +43,7 @@ public sealed class FontFace : IDisposable
     private bool _disposed;
 
     /// <summary>Global switch for inactivity-based automatic unloading.</summary>
-    public static bool GlobalAutoDisposeEnabled { get; set; }
+    public static bool GlobalAutoDisposeEnabled { get; set; } = true;
 
     /// <summary>Idle duration before automatic unloading is triggered.</summary>
     public static TimeSpan AutoDisposeIdleTimeout { get; set; } = TimeSpan.FromMinutes(10);

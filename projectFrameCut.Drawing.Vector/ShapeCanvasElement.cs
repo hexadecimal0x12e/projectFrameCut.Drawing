@@ -23,12 +23,59 @@ public sealed class ShapeCanvasElement : VectorCanvasElement
 {
     private VectorSegment[] _segments;
 
-    private ShapeCanvasElement(VectorSegment[] segments)
+    internal ShapeCanvasElement(VectorSegment[] segments)
     {
         _segments = segments;
     }
 
     public override VectorSegment[] Draw() => _segments;
+
+    // ---------------------------------------------------------------
+    // Animation support
+    // ---------------------------------------------------------------
+
+    /// <summary>
+    /// Creates a deep clone of this element with independently-owned segment data.
+    /// Each segment record is copied via a <c>with</c> expression so the clone
+    /// shares no references with the original.
+    /// </summary>
+    public ShapeCanvasElement Clone()
+    {
+        var newSegments = new VectorSegment[_segments.Length];
+        for (int i = 0; i < _segments.Length; i++)
+            newSegments[i] = _segments[i] with { };
+
+        var clone = new ShapeCanvasElement(newSegments)
+        {
+            RelativeX = RelativeX,
+            RelativeY = RelativeY,
+            Rotation = Rotation,
+            LayerIndex = LayerIndex,
+            BaseX = BaseX,
+            BaseY = BaseY,
+            UseUniformScale = UseUniformScale,
+        };
+        return clone;
+    }
+
+    /// <summary>
+    /// Applies a transformation function to every segment, replacing the
+    /// internal segment array with the results. This is the entry point
+    /// for the animation system to modify segment-level appearance (e.g.
+    /// fill opacity, stroke colour) per frame.
+    /// </summary>
+    /// <param name="transform">A function that produces a new segment from an existing one.</param>
+    public void TransformSegments(Func<VectorSegment, VectorSegment> transform)
+    {
+        if (_segments == null || _segments.Length == 0)
+            return;
+
+        var newSegments = new VectorSegment[_segments.Length];
+        for (int i = 0; i < _segments.Length; i++)
+            newSegments[i] = transform(_segments[i]);
+
+        _segments = newSegments;
+    }
 
     // ---------------------------------------------------------------
     // Fluent styling

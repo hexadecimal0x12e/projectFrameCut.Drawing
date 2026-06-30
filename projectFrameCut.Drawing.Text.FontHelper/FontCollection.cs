@@ -81,6 +81,7 @@ public sealed class FontFaceInfo
     private readonly byte[] _data;
     private readonly int _sfntOffset;
     private readonly string? _sourcePath;
+    private readonly string? _uniqueName;
 
     internal FontFaceInfo(byte[] data, int sfntOffset, int index, string? sourcePath)
     {
@@ -91,7 +92,7 @@ public sealed class FontFaceInfo
 
         // Eagerly parse the "name" table to populate metadata
         // without loading the entire font.
-        string? family = null, subfamily = null;
+        string? family = null, subfamily = null, uniqueName = null;
         var targetLanguages = new HashSet<TargetLanguage>();
         var localizedNames = new Dictionary<TargetLanguage, string>();
         int off = sfntOffset + 4; // skip SFNT version
@@ -119,6 +120,7 @@ public sealed class FontFaceInfo
                             data, (int)tblOffset, (int)tblLength);
                         family = names.GetName(16) ?? names.GetName(1);
                         subfamily = names.GetName(17) ?? names.GetName(2);
+                        uniqueName = names.GetName(3);
 
                         foreach (var lang in names.GetTargetLanguages())
                         {
@@ -136,6 +138,7 @@ public sealed class FontFaceInfo
 
         FamilyName = family ?? "Unknown";
         SubfamilyName = subfamily ?? "Regular";
+        _uniqueName = uniqueName;
         TargetLanguages = targetLanguages;
         LocalizedNames = localizedNames;
     }
@@ -181,6 +184,28 @@ public sealed class FontFaceInfo
                 return name;
             }
             return FamilyName;
+        }
+    }
+
+    /// <summary>A unique identifier for this font (Name ID 3), e.g. "Monotype:Arial Bold:1990".</summary>
+    public string? UniqueName => _uniqueName;
+
+    /// <summary>
+    /// The BCP-47 language tag of the font's primary target language.
+    /// Follows the same non-English preference logic as <see cref="DisplayName"/>.
+    /// Returns "und" (undetermined) when no specific language can be determined.
+    /// </summary>
+    public string PrimaryLanguageTag
+    {
+        get
+        {
+            foreach (var (lang, _) in LocalizedNames)
+            {
+                if (lang.PlatformId == 3 && lang.LanguageId == 0x0409) continue;
+                if (lang.PlatformId == 1 && lang.LanguageId == 0) continue;
+                return lang.ToBcp47Tag();
+            }
+            return "und";
         }
     }
 
