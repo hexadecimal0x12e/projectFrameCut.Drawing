@@ -1,0 +1,43 @@
+<Project>
+    <!--
+        ILRepack merge: only merge projectFrameCut.Drawing.Text.FontHelper into
+        projectFrameCut.Drawing.Text.dll, keeping Base/Vector as separate
+        NuGet dependencies.  This file is auto-imported by the
+        ILRepack.Lib.MSBuild.Task package (build/ILRepack.Lib.MSBuild.Task.targets).
+    -->
+    <Target Name="ILRepackMerge" AfterTargets="Build" Condition="!Exists('$(ProjectDir)ILRepack.Config.props') Or '$(ILRepackDisableAuto)' == ''">
+        <ItemGroup>
+            <InputAssemblies Include="$(OutputPath)$(TargetName)$(TargetExt)"/>
+            <!-- Only FontHelper – Base and Vector stay as separate packages -->
+            <InputAssemblies Include="$(OutputPath)projectFrameCut.Drawing.Text.FontHelper.dll"/>
+        </ItemGroup>
+
+        <ILRepack
+                Parallel="true"
+                DebugInfo="true"
+                AllowDuplicateResources="false"
+                InputAssemblies="@(InputAssemblies)"
+                TargetKind="SameAsPrimaryAssembly"
+                KeyFile="$(KeyFile)"
+                OutputFile="$(OutputPath)$(TargetName)$(TargetExt)"
+        />
+    </Target>
+
+    <!-- After ILRepack merges FontHelper, also replace the reference assembly
+         (obj\ref\*.dll) so consuming projects see the merged types at compile time -->
+    <Target AfterTargets="ILRepackMerge" Name="UpdateReferenceAssembly">
+        <ItemGroup>
+            <_RefAssemblyPath Include="$(IntermediateOutputPath)ref\$(TargetName)$(TargetExt)"/>
+        </ItemGroup>
+        <Copy SourceFiles="$(OutputPath)$(TargetName)$(TargetExt)"
+              DestinationFiles="@(_RefAssemblyPath)"
+              SkipUnchangedFiles="false"
+              OverwriteReadOnlyFiles="true"/>
+    </Target>
+
+    <!-- Remove the now-merged FontHelper.dll so it isn't accidentally
+         picked up as a separate asset by consumers or dotnet pack -->
+    <Target AfterTargets="UpdateReferenceAssembly" Name="CleanMergedAssemblies">
+        <Delete Files="$(OutputPath)projectFrameCut.Drawing.Text.FontHelper.dll"/>
+    </Target>
+</Project>

@@ -439,25 +439,6 @@ namespace projectFrameCut.Drawing.Base
     }
 
     /// <summary>
-    /// Read-only lifecycle snapshot of one picture instance.
-    /// </summary>
-    public readonly record struct PictureLifecycleSnapshot(
-        long Id,
-        string TypeName,
-        int Width,
-        int Height,
-        DateTime CreatedAtUtc,
-        DateTime? DisposedAtUtc,
-        DateTime? CollectedAtUtc,
-        bool IsDisposed,
-        bool IsCollected,
-        TimeSpan? LifetimeToDispose,
-        TimeSpan? LifetimeToCollect,
-        StackTrace CreateStack,
-        StackTrace? DisposeStack,
-        List<PictureProcessStack>? FinalProcessStack);
-
-    /// <summary>
     /// Centralized lifecycle tracker for <see cref="IPicture"/> objects.
     /// </summary>
     public static class PictureLifecycleTracker
@@ -559,6 +540,19 @@ namespace projectFrameCut.Drawing.Base
         /// </summary>
         public static bool TrackCollection { get; set; } = false;
 
+        /// <summary>
+        /// Fire <see cref="PictureDisposed"/> event when a picture is disposed. This can be used to trigger logging or other actions when a picture is disposed. Keep disabled in production unless needed for diagnostics.
+        /// </summary>
+        /// <remarks>
+        /// This function requires the <see cref="Enabled"/> property to be <see langword="true"/>. If <see cref="Enabled"/> is <see langword="false"/>, this event will not be fired even if <see cref="FireEventOnDispose"/> is <see langword="true"/>.
+        /// </remarks>
+        public static bool FireEventOnDispose { get; set; } = false;
+
+        /// <summary>
+        /// Event fired when a picture is disposed. Subscribers can use this event to log or perform actions when a picture is disposed. The event provides the disposed picture and its lifecycle snapshot at the time of disposal.
+        /// </summary>
+        public static event EventHandler<PictureObjectDisposedEventArgs>? PictureDisposed;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void RegisterCreated(IPicture picture)
         {
@@ -577,10 +571,35 @@ namespace projectFrameCut.Drawing.Base
         public static void MarkDisposed(IPicture picture)
         {
             if (!Enabled) return;
-            if (!Identities.TryGetValue(picture, out PictureIdentity? identity)) return;
-            if (States.TryGetValue(identity.Id, out PictureLifecycleState? state))
+            if (Identities.TryGetValue(picture, out PictureIdentity? identity) && States.TryGetValue(identity.Id, out PictureLifecycleState? state))
             {
                 state.MarkDisposed(picture.ProcessStack);
+                if (FireEventOnDispose)
+                {
+                    PictureDisposed?.Invoke(picture, new PictureObjectDisposedEventArgs(picture, state.ToSnapshot()));
+                }
+            }
+            else // avoid some worst condition where the picture is disposed but not registered, we can still fire an event with a minimal snapshot
+            {
+                if (FireEventOnDispose)
+                {
+                    PictureDisposed?.Invoke(picture, new PictureObjectDisposedEventArgs(picture, new PictureLifecycleSnapshot
+                    {
+                        CreatedAtUtc = DateTime.MinValue,
+                        DisposedAtUtc = DateTime.UtcNow,
+                        CollectedAtUtc = null,
+                        Id = -1,
+                        TypeName = picture.GetType().FullName ?? picture.GetType().Name,
+                        Width = picture.Width,
+                        Height = picture.Height,
+                        CreateStack = new StackTrace(new Exception()), // fill in a blank stack trace to avoid null reference
+                        DisposeStack = new StackTrace(true),
+                        IsDisposed = true,
+                        IsCollected = false,
+                        LifetimeToCollect = null,
+                        LifetimeToDispose = null,
+                    }));
+                }
             }
         }
 
@@ -606,71 +625,67 @@ namespace projectFrameCut.Drawing.Base
                 state.MarkCollected(stack);
             }
         }
-
         public static async Task ExportPictureLifecycleTrackerSnapshots(string outputPath)
         {
-            try
+            var str = ExportPictureLifecycleTrackerSnapshots();
+            if (str != null)
             {
-                if (!PictureLifecycleTracker.Enabled)
-                {
-                    //Logger.Log("PictureLifecycleTracker is disabled. Skipped lifecycle snapshot export.");
-                    return;
-                }
+                await File.WriteAllTextAsync(outputPath, str);
+            }
+        }
 
-                var snapshots = PictureLifecycleTracker.GetSnapshots(includeDisposed: true);
-                await using var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
-                await using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        public static string? ExportPictureLifecycleTrackerSnapshots()
+        {
+            if (!Enabled)
+            {
+                return null;
+            }
 
-                await writer.WriteLineAsync(string.Join(',',
+            var snapshots = GetSnapshots(includeDisposed: true);
+            using var writer = new StringWriter();
+
+            writer.WriteLine(string.Join(',',
+            [
+                "Id",
+                "TypeName",
+                "Width",
+                "Height",
+                "CreatedAtUtc",
+                "DisposedAtUtc",
+                "CollectedAtUtc",
+                "IsDisposed",
+                "IsCollected",
+                "LifetimeToDisposeMs",
+                "LifetimeToCollectMs",
+                "CreateStackTrace",
+                "DisposeStackTrace",
+                "FinalProcessStack"
+            ]));
+
+            foreach (var snapshot in snapshots)
+            {
+                writer.WriteLine(string.Join(',',
                 [
-                    "Id",
-                    "TypeName",
-                    "Width",
-                    "Height",
-                    "CreatedAtUtc",
-                    "DisposedAtUtc",
-                    "CollectedAtUtc",
-                    "IsDisposed",
-                    "IsCollected",
-                    "LifetimeToDisposeMs",
-                    "LifetimeToCollectMs",
-                    "CreateStackTrace",
-                    "DisposeStackTrace",
-                    "FinalProcessStack"
+                    EscapeCsv(snapshot.Id.ToString(CultureInfo.InvariantCulture)),
+                    EscapeCsv(snapshot.TypeName),
+                    EscapeCsv(snapshot.Width.ToString(CultureInfo.InvariantCulture)),
+                    EscapeCsv(snapshot.Height.ToString(CultureInfo.InvariantCulture)),
+                    EscapeCsv(snapshot.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture)),
+                    EscapeCsv(snapshot.DisposedAtUtc?.ToString("O", CultureInfo.InvariantCulture)?? "N/A"),
+                    EscapeCsv(snapshot.CollectedAtUtc?.ToString("O", CultureInfo.InvariantCulture)?? "N/A"),
+                    EscapeCsv(snapshot.IsDisposed ? "true" : "false"),
+                    EscapeCsv(snapshot.IsCollected ? "true" : "false"),
+                    EscapeCsv(snapshot.LifetimeToDispose?.TotalMilliseconds.ToString(CultureInfo.InvariantCulture)),
+                    EscapeCsv(snapshot.LifetimeToCollect?.TotalMilliseconds.ToString(CultureInfo.InvariantCulture)),
+                    EscapeCsv(snapshot.CreateStack.ToString()),
+                    EscapeCsv(snapshot.DisposeStack?.ToString() ?? "N/A"),
+                    EscapeCsv(snapshot.FinalProcessStack is List<PictureProcessStack> p ? PictureProcessStack.FormatProcessStackForLog(p, 12): "N/A"),
+
                 ]));
-
-                foreach (var snapshot in snapshots)
-                {
-                    await writer.WriteLineAsync(string.Join(',',
-                    [
-                        EscapeCsv(snapshot.Id.ToString(CultureInfo.InvariantCulture)),
-                        EscapeCsv(snapshot.TypeName),
-                        EscapeCsv(snapshot.Width.ToString(CultureInfo.InvariantCulture)),
-                        EscapeCsv(snapshot.Height.ToString(CultureInfo.InvariantCulture)),
-                        EscapeCsv(snapshot.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture)),
-                        EscapeCsv(snapshot.DisposedAtUtc?.ToString("O", CultureInfo.InvariantCulture)?? "N/A"),
-                        EscapeCsv(snapshot.CollectedAtUtc?.ToString("O", CultureInfo.InvariantCulture)?? "N/A"),
-                        EscapeCsv(snapshot.IsDisposed ? "true" : "false"),
-                        EscapeCsv(snapshot.IsCollected ? "true" : "false"),
-                        EscapeCsv(snapshot.LifetimeToDispose?.TotalMilliseconds.ToString(CultureInfo.InvariantCulture)),
-                        EscapeCsv(snapshot.LifetimeToCollect?.TotalMilliseconds.ToString(CultureInfo.InvariantCulture)),
-                        EscapeCsv(snapshot.CreateStack.ToString()),
-                        EscapeCsv(snapshot.DisposeStack?.ToString() ?? "N/A"),
-                        EscapeCsv(snapshot.FinalProcessStack is List<PictureProcessStack> p ? PictureProcessStack.FormatProcessStackForLog(p, 12): "N/A"),
-
-                    ]));
-                }
-
-                await writer.FlushAsync();
-                await stream.FlushAsync();
-                await writer.DisposeAsync();
-                await stream.DisposeAsync();
-                //Logger.Log($"Exported PictureLifecycleTracker snapshots: {snapshots.Count} records, {outputPath}");
             }
-            catch (Exception)
-            {
-                //Logger.Log(ex, "export PictureLifecycleTracker snapshots");
-            }
+
+            writer.Flush();
+            return writer.ToString();
         }
 
         private static string EscapeCsv(string? value)
@@ -687,5 +702,35 @@ namespace projectFrameCut.Drawing.Base
 
             return value;
         }
+
+        public class PictureObjectDisposedEventArgs : EventArgs
+        {
+            public IPicture Picture { get; }
+            public PictureLifecycleSnapshot LifecycleState { get; }
+            public PictureObjectDisposedEventArgs(IPicture picture, PictureLifecycleSnapshot lifecycleState)
+            {
+                Picture = picture;
+                LifecycleState = lifecycleState;
+            }
+        }
     }
+
+    /// <summary>
+    /// Read-only lifecycle snapshot of one picture instance.
+    /// </summary>
+    public readonly record struct PictureLifecycleSnapshot(
+        long Id,
+        string TypeName,
+        int Width,
+        int Height,
+        DateTime CreatedAtUtc,
+        DateTime? DisposedAtUtc,
+        DateTime? CollectedAtUtc,
+        bool IsDisposed,
+        bool IsCollected,
+        TimeSpan? LifetimeToDispose,
+        TimeSpan? LifetimeToCollect,
+        StackTrace CreateStack,
+        StackTrace? DisposeStack,
+        List<PictureProcessStack>? FinalProcessStack);
 }

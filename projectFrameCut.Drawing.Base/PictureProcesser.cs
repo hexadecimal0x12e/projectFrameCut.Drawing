@@ -247,15 +247,36 @@ namespace projectFrameCut.Drawing.Base
         }
     }
 
+    /// <summary>
+    /// Represents a single step in the processing of a picture, including the operation performed, the operator used, the stack trace of the processing function, any additional properties, and the elapsed time for the operation.
+    /// </summary>
     public class PictureProcessStack
     {
+        /// <summary>
+        /// A human-readable name for the operation performed in this processing step. This should describe the action taken on the picture, such as "Resize", "Apply Filter", or "Convert Color Space".
+        /// </summary>
         public required string OperationDisplayName { get; set; }
+        /// <summary>
+        /// The type of the operator (class or struct) that performed this processing step. This can be used to identify the specific implementation or algorithm used for the operation.
+        /// </summary>
         [JsonConverter(typeof(TypeJsonConverter))]
         public required Type? Operator { get; set; }
+        /// <summary>
+        /// The stack trace of the function that performed this processing step. This can be useful for debugging and tracing the flow of operations, especially when multiple processing steps are involved. The stack trace is serialized to a string for logging purposes.
+        /// </summary>
         [JsonConverter(typeof(StackTraceJsonConverter))]
         public required StackTrace? ProcessingFuncStackTrace { get; set; }
+        /// <summary>
+        /// A dictionary of additional properties or metadata associated with this processing step. This can include parameters used for the operation, intermediate results, or any other relevant information. The properties are serialized to JSON for logging and debugging purposes.
+        /// </summary>
         public Dictionary<string, object>? Properties { get; set; }
+        /// <summary>
+        /// The elapsed time taken to perform this processing step. This can be used for performance monitoring and optimization, allowing developers to identify slow operations and improve the efficiency of the picture processing pipeline.
+        /// </summary>
         public TimeSpan? Elapsed { get; set; }
+        /// <summary>
+        /// A string tag that can be used to categorize or label this processing step. This can be useful for filtering and searching through logs, especially when dealing with complex processing pipelines that involve multiple steps and operations.
+        /// </summary>
         public string? Tag { get; set; }
 
         private static readonly JsonSerializerOptions options = new JsonSerializerOptions
@@ -265,6 +286,9 @@ namespace projectFrameCut.Drawing.Base
             NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals
         };
 
+        /// <summary>
+        /// Formats a process stack for logging, including operation names, operators, elapsed times, properties, and stack traces. The output is a human-readable string suitable for log files or console output.
+        /// </summary>
         public static string FormatProcessStackForLog(IEnumerable<PictureProcessStack>? processStack, int maxFramesPerStep = 12)
         {
             if (processStack == null) return "(null)";
@@ -283,7 +307,9 @@ namespace projectFrameCut.Drawing.Base
             return sb.ToString();
         }
 
-        // Markdown-formatted variant of the process-stack formatter.
+        /// <summary>
+        /// Formats a process stack for logging in Markdown format, including operation names, operators, elapsed times, properties, and stack traces. The output is a Markdown string suitable for documentation or rich-text logs.
+        /// </summary>
         public static string FormatProcessStackForLogMarkdown(IEnumerable<PictureProcessStack>? processStack, int maxFramesPerStep = 12)
         {
             if (processStack == null) return "(null)";

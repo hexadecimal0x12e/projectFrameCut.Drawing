@@ -9,8 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.45">
+        <PrivateAssets>all</PrivateAssets>
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
     <ProjectReference Include="..\projectFrameCut.Drawing.Base\projectFrameCut.Drawing.Base.csproj" />
-    <ProjectReference Include="..\projectFrameCut.Drawing.Text.FontHelper\projectFrameCut.Drawing.Text.FontHelper.csproj" />
+    <ProjectReference Include="..\projectFrameCut.Drawing.Text.FontHelper\projectFrameCut.Drawing.Text.FontHelper.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\projectFrameCut.Drawing.Vector\projectFrameCut.Drawing.Vector.csproj" />
   </ItemGroup>
 
