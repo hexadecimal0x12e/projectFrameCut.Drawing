@@ -22,6 +22,82 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
     }
 
     /// <summary>
+    /// Contains all the information needed to render an SVG <c>&lt;text&gt;</c> element
+    /// into a <see cref="VectorCanvasElement"/>.
+    /// </summary>
+    /// <remarks>
+    /// Instances of this record are created by <see cref="SVGToVectorElement"/> during
+    /// SVG import and passed to <see cref="SvgTextImportHandler"/> if one is registered.
+    /// </remarks>
+    public sealed record SvgTextImportContext
+    {
+        /// <summary>The text content to render.</summary>
+        public required string Text { get; init; }
+
+        /// <summary>The X coordinate in SVG user units (before canvas normalisation).</summary>
+        public float X { get; init; }
+
+        /// <summary>The Y coordinate in SVG user units (before canvas normalisation).</summary>
+        public float Y { get; init; }
+
+        /// <summary>Canvas width in SVG user units.</summary>
+        public float CanvasWidth { get; init; }
+
+        /// <summary>Canvas height in SVG user units.</summary>
+        public float CanvasHeight { get; init; }
+
+        /// <summary>CSS font-family value, or <c>null</c> if unspecified.</summary>
+        public string? FontFamily { get; init; }
+
+        /// <summary>Font size in SVG user units. Defaults to 16.</summary>
+        public float FontSize { get; init; } = 16f;
+
+        /// <summary>CSS font-weight value (e.g. <c>"bold"</c>, <c>"normal"</c>), or <c>null</c>.</summary>
+        public string? FontWeight { get; init; }
+
+        /// <summary>CSS font-style value (e.g. <c>"italic"</c>, <c>"normal"</c>), or <c>null</c>.</summary>
+        public string? FontStyle { get; init; }
+
+        /// <summary>CSS text-anchor value (<c>"start"</c>, <c>"middle"</c>, <c>"end"</c>), or <c>null</c>.</summary>
+        public string? TextAnchor { get; init; }
+
+        /// <summary>Fill color red component (16-bit). Zero when no fill.</summary>
+        public ushort FillR { get; init; }
+
+        /// <summary>Fill color green component (16-bit).</summary>
+        public ushort FillG { get; init; }
+
+        /// <summary>Fill color blue component (16-bit).</summary>
+        public ushort FillB { get; init; }
+
+        /// <summary>Fill alpha (opacity). Zero when no fill.</summary>
+        public float FillA { get; init; }
+
+        /// <summary>Stroke color red component (16-bit).</summary>
+        public ushort StrokeR { get; init; }
+
+        /// <summary>Stroke color green component (16-bit).</summary>
+        public ushort StrokeG { get; init; }
+
+        /// <summary>Stroke color blue component (16-bit).</summary>
+        public ushort StrokeB { get; init; }
+
+        /// <summary>Stroke alpha (opacity). Zero when no stroke.</summary>
+        public float StrokeA { get; init; }
+
+        /// <summary>Stroke width in SVG user units.</summary>
+        public float StrokeWidth { get; init; }
+    }
+
+    /// <summary>
+    /// Handles rendering of an SVG <c>&lt;text&gt;</c> element during import.
+    /// </summary>
+    /// <param name="context">The text rendering context.</param>
+    /// <returns>A <see cref="VectorCanvasElement"/> representing the rendered text,
+    /// or <c>null</c> if the handler cannot or chooses not to render this element.</returns>
+    public delegate VectorCanvasElement? SvgTextImportHandler(SvgTextImportContext context);
+
+    /// <summary>
     /// Provides bidirectional conversion between <see cref="VectorPicture"/> and SVG markup.
     /// </summary>
     public static class SVGToVectorElement
@@ -37,6 +113,36 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         /// multiplication.
         /// </summary>
         public static bool UsePrivateColorSavingMode { get; set; }
+
+        /// <summary>
+        /// Gets or sets an optional handler for importing <c>&lt;text&gt;</c> elements
+        /// from SVG markup.
+        /// <para>
+        /// When set, <see cref="ImportFromSvg(string)"/> calls this handler for every
+        /// <c>&lt;text&gt;</c> element it encounters. The handler receives the text
+        /// content along with font, position, and colour attributes, and should return
+        /// a <see cref="VectorCanvasElement"/> whose <see cref="VectorCanvasElement.Draw"/>
+        /// produces the rendered glyphs, or <c>null</c> to silently skip the element.
+        /// </para>
+        /// <para>
+        /// The returned element's <see cref="VectorCanvasElement.RelativeX"/> and
+        /// <see cref="VectorCanvasElement.RelativeY"/> are automatically set to the
+        /// correct canvas-normalized position by the importer. The handler should
+        /// produce segment coordinates relative to the element origin (i.e. in local
+        /// 0..1 space).
+        /// </para>
+        /// </summary>
+        /// <example>
+        /// <code>
+        /// SVGToVectorElement.TextImportHandler = ctx =>
+        /// {
+        ///     // Render text using an external text layout engine
+        ///     var segs = MyTextRenderer.Render(ctx.Text, ctx.FontFamily, ctx.FontSize, ...);
+        ///     return new SegmentCollectionElement(segs);
+        /// };
+        /// </code>
+        /// </example>
+        public static SvgTextImportHandler? TextImportHandler { get; set; }
 
         // =====================================================================
         // Export: VectorPicture → SVG
@@ -479,6 +585,11 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             public float TranslateY { get; set; }
             public string? PrivateFillColor { get; set; }
             public string? PrivateStrokeColor { get; set; }
+            public string? FontFamily { get; set; }
+            public float FontSize { get; set; } = 16f;
+            public string? FontWeight { get; set; }
+            public string? FontStyle { get; set; }
+            public string? TextAnchor { get; set; }
 
             public SvgContext Clone()
             {
@@ -494,6 +605,11 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     TranslateY = TranslateY,
                     PrivateFillColor = PrivateFillColor,
                     PrivateStrokeColor = PrivateStrokeColor,
+                    FontFamily = FontFamily,
+                    FontSize = FontSize,
+                    FontWeight = FontWeight,
+                    FontStyle = FontStyle,
+                    TextAnchor = TextAnchor,
                 };
                 return c;
             }
@@ -536,6 +652,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     case "polygon":
                         ParsePolygon(el, result, childCtx, canvasW, canvasH);
                         break;
+                    case "text":
+                        ParseText(el, result, childCtx, canvasW, canvasH);
+                        break;
                     case "path":
                         ParsePath(el, result, childCtx, canvasW, canvasH);
                         break;
@@ -571,6 +690,13 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             ApplyAttribute(el, "fill-opacity", v => { if (TryParseFloat(v, out var fo)) ctx.FillOpacity = fo; });
             ApplyAttribute(el, "stroke-opacity", v => { if (TryParseFloat(v, out var so)) ctx.StrokeOpacity = so; });
 
+            // Font / text attributes
+            ApplyAttribute(el, "font-family", v => ctx.FontFamily = v);
+            ApplyAttribute(el, "font-size", v => { if (TryParseFontSize(v, out var fs)) ctx.FontSize = fs; });
+            ApplyAttribute(el, "font-weight", v => ctx.FontWeight = v);
+            ApplyAttribute(el, "font-style", v => ctx.FontStyle = v);
+            ApplyAttribute(el, "text-anchor", v => ctx.TextAnchor = v);
+
             // Private color attributes (take complete priority if present)
             ApplyAttribute(el, "fill_projectFrameCut.Drawing.Color", v => ctx.PrivateFillColor = v);
             ApplyAttribute(el, "stroke_projectFrameCut.Drawing.Color", v => ctx.PrivateStrokeColor = v);
@@ -586,6 +712,11 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 case "opacity": if (TryParseFloat(value, out var o)) ctx.Opacity = o; break;
                 case "fill-opacity": if (TryParseFloat(value, out var fo)) ctx.FillOpacity = fo; break;
                 case "stroke-opacity": if (TryParseFloat(value, out var so)) ctx.StrokeOpacity = so; break;
+                case "font-family": ctx.FontFamily = value; break;
+                case "font-size": if (TryParseFontSize(value, out var fs)) ctx.FontSize = fs; break;
+                case "font-weight": ctx.FontWeight = value; break;
+                case "font-style": ctx.FontStyle = value; break;
+                case "text-anchor": ctx.TextAnchor = value; break;
             }
         }
 
@@ -827,6 +958,85 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             };
 
             result.Elements.Add(new SegmentCollectionElement(seg));
+        }
+
+        private static void ParseText(XElement el, VectorPicture result, SvgContext ctx,
+            float canvasW, float canvasH)
+        {
+            if (TextImportHandler == null) return;
+
+            var x = GetDim(el, "x", canvasW);
+            var y = GetDim(el, "y", canvasH);
+
+            var text = el.Value?.Trim();
+            if (string.IsNullOrEmpty(text)) return;
+
+            NormalizeFillStroke(ctx, out var fillR, out var fillG, out var fillB, out var fillA,
+                               out var strokeR, out var strokeG, out var strokeB, out var strokeA,
+                               out var thickness);
+
+            var context = new SvgTextImportContext
+            {
+                Text = text,
+                X = x + ctx.TranslateX,
+                Y = y + ctx.TranslateY,
+                CanvasWidth = canvasW,
+                CanvasHeight = canvasH,
+                FontFamily = ctx.FontFamily,
+                FontSize = ctx.FontSize,
+                FontWeight = ctx.FontWeight,
+                FontStyle = ctx.FontStyle,
+                TextAnchor = ctx.TextAnchor,
+                FillR = fillR,
+                FillG = fillG,
+                FillB = fillB,
+                FillA = fillA,
+                StrokeR = strokeR,
+                StrokeG = strokeG,
+                StrokeB = strokeB,
+                StrokeA = strokeA,
+                StrokeWidth = thickness,
+            };
+
+            var element = TextImportHandler(context);
+            if (element != null)
+            {
+                if (element.UseUniformScale)
+                {
+                    // For uniform-scale elements, position is:
+                    //   ox = BaseX * w + RelativeX * min(w,h)
+                    // Store the SVG position in BaseX/Y (canvas-space) and
+                    // keep the handler-set RelativeX/Y (cursor advances) intact.
+                    element.BaseX = (x + ctx.TranslateX) / canvasW;
+                    element.BaseY = (y + ctx.TranslateY) / canvasH;
+                }
+                else
+                {
+                    element.RelativeX = (x + ctx.TranslateX) / canvasW;
+                    element.RelativeY = (y + ctx.TranslateY) / canvasH;
+                }
+                result.Elements.Add(element);
+            }
+        }
+
+        /// <summary>
+        /// Parse an SVG font-size value into a float in user units.
+        /// Handles bare numbers, px, and pt suffixes. Returns <c>false</c> for
+        /// unrecognized values (caller should fall back to the inherited size).
+        /// </summary>
+        private static bool TryParseFontSize(string raw, out float size)
+        {
+            size = 16f;
+            if (raw == null) return false;
+            var v = raw.Trim();
+            if (v.Length == 0) return false;
+
+            if (v.EndsWith("px", StringComparison.OrdinalIgnoreCase))
+                v = v[..^2].Trim();
+            else if (v.EndsWith("pt", StringComparison.OrdinalIgnoreCase))
+                v = v[..^2].Trim();
+
+            return TryParseFloat(v, out size);
         }
 
         // ---------------------------------------------------------------
