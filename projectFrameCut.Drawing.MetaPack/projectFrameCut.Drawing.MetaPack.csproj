@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+	  <TargetFramework>net10.0</TargetFramework>
+		<PackageId>projectFrameCut.Drawing.MetaPack</PackageId>
+		<Product>the true core of projectFrameCut</Product>
+		<Description>projectFrameCut.Drawing metadata pack for implementing drawing functionality</Description>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\projectFrameCut.Drawing.Base\projectFrameCut.Drawing.Base.csproj"  />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Effect\projectFrameCut.Drawing.Effect.csproj"  />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Processing\projectFrameCut.Drawing.Processing.csproj"  />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Text\projectFrameCut.Drawing.Text.csproj"  />
+		<ProjectReference Include="..\projectFrameCut.Drawing.Vector\projectFrameCut.Drawing.Vector.csproj"  />
+
+		<PackageReference Include="System.IO.Hashing" Version="10.0.8" /> <!-- for the Base project, make sure it's included in dependencies -->
+			
+	</ItemGroup>
+
+</Project>

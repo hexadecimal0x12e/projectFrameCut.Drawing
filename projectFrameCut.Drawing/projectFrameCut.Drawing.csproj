@@ -4,6 +4,7 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<PackageId>projectFrameCut.Drawing</PackageId>
 		<Product>the true core of projectFrameCut</Product>
+		<Description>projectFrameCut.Drawing all-in-one package</Description>
 	</PropertyGroup>
 
 	<ItemGroup>

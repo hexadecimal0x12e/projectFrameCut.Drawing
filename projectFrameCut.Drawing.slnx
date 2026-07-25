@@ -21,5 +21,6 @@
   <Folder Name="/Vector/">
     <Project Path="projectFrameCut.Drawing.Vector/projectFrameCut.Drawing.Vector.csproj" />
   </Folder>
+  <Project Path="projectFrameCut.Drawing.MetaPack/projectFrameCut.Drawing.MetaPack.csproj" />
   <Project Path="projectFrameCut.Drawing/projectFrameCut.Drawing.csproj" Id="99128ddb-c971-4532-a13b-3e18282dbb99" />
 </Solution>

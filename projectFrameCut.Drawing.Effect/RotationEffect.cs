@@ -254,8 +254,10 @@ public static class RotationEffect
 
         int w = src.Width, h = src.Height;
 
-        if (x0 < 0) x0 = 0; if (x1 >= w) x1 = w - 1;
-        if (y0 < 0) y0 = 0; if (y1 >= h) y1 = h - 1;
+        if (x0 < 0) x0 = 0; if (x0 >= w) x0 = w - 1;
+        if (x1 < 0) x1 = 0; if (x1 >= w) x1 = w - 1;
+        if (y0 < 0) y0 = 0; if (y0 >= h) y0 = h - 1;
+        if (y1 < 0) y1 = 0; if (y1 >= h) y1 = h - 1;
 
         // All 4 corners valid
         int i00 = y0 * w + x0;
@@ -285,8 +287,10 @@ public static class RotationEffect
 
         int w = src.Width, h = src.Height;
 
-        if (x0 < 0) x0 = 0; if (x1 >= w) x1 = w - 1;
-        if (y0 < 0) y0 = 0; if (y1 >= h) y1 = h - 1;
+        if (x0 < 0) x0 = 0; if (x0 >= w) x0 = w - 1;
+        if (x1 < 0) x1 = 0; if (x1 >= w) x1 = w - 1;
+        if (y0 < 0) y0 = 0; if (y0 >= h) y0 = h - 1;
+        if (y1 < 0) y1 = 0; if (y1 >= h) y1 = h - 1;
 
         int i00 = y0 * w + x0;
         int i10 = y0 * w + x1;
@@ -317,8 +321,10 @@ public static class RotationEffect
 
         int w = src.Width, h = src.Height;
 
-        if (x0 < 0) x0 = 0; if (x1 >= w) x1 = w - 1;
-        if (y0 < 0) y0 = 0; if (y1 >= h) y1 = h - 1;
+        if (x0 < 0) x0 = 0; if (x0 >= w) x0 = w - 1;
+        if (x1 < 0) x1 = 0; if (x1 >= w) x1 = w - 1;
+        if (y0 < 0) y0 = 0; if (y0 >= h) y0 = h - 1;
+        if (y1 < 0) y1 = 0; if (y1 >= h) y1 = h - 1;
 
         int i00 = y0 * w + x0;
         int i10 = y0 * w + x1;
@@ -347,8 +353,10 @@ public static class RotationEffect
 
         int w = src.Width, h = src.Height;
 
-        if (x0 < 0) x0 = 0; if (x1 >= w) x1 = w - 1;
-        if (y0 < 0) y0 = 0; if (y1 >= h) y1 = h - 1;
+        if (x0 < 0) x0 = 0; if (x0 >= w) x0 = w - 1;
+        if (x1 < 0) x1 = 0; if (x1 >= w) x1 = w - 1;
+        if (y0 < 0) y0 = 0; if (y0 >= h) y0 = h - 1;
+        if (y1 < 0) y1 = 0; if (y1 >= h) y1 = h - 1;
 
         int i00 = y0 * w + x0;
         int i10 = y0 * w + x1;
