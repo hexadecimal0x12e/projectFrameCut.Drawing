@@ -62,12 +62,141 @@ public class NormalTypesettingEngine : ITypesettingEngine
     //  Public API
     // ──────────────────────────────────────────────
 
+    public VectorPicture Layout(TextEntry entry, FontFace font)
+    {
+        var result = new VectorPicture();
+        if (string.IsNullOrEmpty(entry.Text)) return result;
+        var clusters = UnicodeTextPipeline.Resolve(entry.Text, font, FallbackFonts,
+            entry.FillR, entry.FillG, entry.FillB);
+        float baseline = 0f;
+        foreach (var line in SplitClusterLines(clusters))
+        {
+            LayoutUnicodeLine(line, entry, font, baseline, result);
+            baseline += entry.FontSize * (1f + entry.LineSpacing);
+        }
+        foreach (var element in result.Elements)
+        {
+            element.BaseX = entry.X; element.BaseY = entry.Y;
+            element.LayerIndex = entry.LayerIndex; element.Rotation += entry.Rotation;
+        }
+        return result;
+    }
+
+    public (float width, float height) Measure(TextEntry entry, FontFace font)
+    {
+        if (string.IsNullOrEmpty(entry.Text)) return (0f, 0f);
+        var clusters = UnicodeTextPipeline.Resolve(entry.Text, font, FallbackFonts,
+            entry.FillR, entry.FillG, entry.FillB);
+        float maxWidth = 0f, minY = float.PositiveInfinity, maxY = float.NegativeInfinity;
+        float baseline = 0f;
+        foreach (var line in SplitClusterLines(clusters))
+        {
+            float x = 0f;
+            foreach (var c in line)
+            {
+                var style = Effective(entry, c.Utf16Start);
+                if (!c.IsSpace && c.Font is not null &&
+                    c.Font.TryGetGlyphBounds(c.GlyphIndex, out short x0, out short y0, out short x1, out short y1))
+                {
+                    float s = style.FontSize / c.Font.UnitsPerEm;
+                    minY = MathF.Min(minY, baseline + y0 * s); maxY = MathF.Max(maxY, baseline + y1 * s);
+                }
+                x += Advance(c, style, entry, font);
+            }
+            maxWidth = MathF.Max(maxWidth, x);
+            baseline += entry.FontSize * (1f + entry.LineSpacing);
+        }
+        float h = float.IsFinite(minY) ? maxY - minY : baseline;
+        return (maxWidth, h);
+    }
+
+    private void LayoutUnicodeLine(List<ResolvedTextCluster> line, TextEntry entry, FontFace primary,
+        float baseline, VectorPicture result)
+    {
+        var advances = new float[line.Count];
+        float total = 0f;
+        for (int i = 0; i < line.Count; i++) total += advances[i] = Advance(line[i], Effective(entry, line[i].Utf16Start), entry, primary);
+        bool rtl = entry.FlowDirection == TextFlowDirection.RightToLeft;
+        float cursor = rtl
+            ? entry.Alignment == TextAlignment.Center ? total * .5f : entry.Alignment == TextAlignment.Right ? 0f : total
+            : entry.Alignment == TextAlignment.Center ? -total * .5f : entry.Alignment == TextAlignment.Right ? -total : 0f;
+        for (int i = 0; i < line.Count; i++)
+        {
+            var c = line[i]; var style = Effective(entry, c.Utf16Start);
+            if (rtl) cursor -= advances[i];
+            if (!c.IsSpace && c.Font is not null)
+            {
+                VectorCanvasElement? element = null;
+                if (c.IsColorEmoji)
+                {
+                    element = new ColorGlyphCanvasElement(c.Font, c.ColorLayers!, style.FontSize, style.FillA)
+                    { RelativeX = cursor, RelativeY = baseline };
+                }
+                else
+                {
+                    Glyph? glyph = c.Font.GetVariedGlyph(c.GlyphIndex);
+                    if (glyph is not null && !glyph.IsEmpty)
+                    {
+                        var mono = new GlyphCanvasElement(glyph, c.Font.UnitsPerEm)
+                        { FontSize = style.FontSize, RelativeX = cursor, RelativeY = baseline };
+                        if (style.FillA > 0) mono.WithFill(style.FillR, style.FillG, style.FillB, style.FillA);
+                        if (style.StrokeThickness > 0 && style.StrokeA > 0)
+                            mono.WithStroke(style.StrokeR, style.StrokeG, style.StrokeB, style.StrokeA, style.StrokeThickness);
+                        mono.WithShowEmBox(DebugMode || ShowEMBox); element = mono;
+                    }
+                }
+                if (element is not null) result.Elements.Add(element);
+            }
+            if (!rtl) cursor += advances[i];
+        }
+    }
+
+    private static float Advance(ResolvedTextCluster c, EffectiveStyle s, TextEntry entry, FontFace primary)
+    {
+        if (c.IsSpace)
+        {
+            ushort gid = primary.GetGlyphIndex(' ');
+            return primary.GetVariedAdvanceWidth(gid) * (s.FontSize / primary.UnitsPerEm) + s.WordSpacing + s.CharacterSpacing;
+        }
+        if (c.ShapedAdvanceWidth.HasValue && c.Font is not null)
+            return c.ShapedAdvanceWidth.Value * (s.FontSize / c.Font.UnitsPerEm) + s.CharacterSpacing;
+        return c.Font is null ? 0f : ComputeCharacterAdvance(c.Font, c.GlyphIndex, s.FontSize, s.CharacterSpacing);
+    }
+
+    private static List<List<ResolvedTextCluster>> SplitClusterLines(List<ResolvedTextCluster> clusters)
+    {
+        var lines = new List<List<ResolvedTextCluster>> { new() };
+        foreach (var c in clusters) { if (c.IsNewLine) lines.Add(new()); else lines[^1].Add(c); }
+        return lines;
+    }
+
+    private readonly record struct EffectiveStyle(float FontSize, float CharacterSpacing, float WordSpacing,
+        ushort FillR, ushort FillG, ushort FillB, float FillA,
+        ushort StrokeR, ushort StrokeG, ushort StrokeB, float StrokeA, float StrokeThickness);
+
+    private static EffectiveStyle Effective(TextEntry entry, int utf16Index)
+    {
+        float fs = entry.FontSize, cs = entry.CharacterSpacing, ws = entry.WordSpacing;
+        ushort fr = entry.FillR, fg = entry.FillG, fb = entry.FillB, sr = entry.StrokeR, sg = entry.StrokeG, sb = entry.StrokeB;
+        float fa = entry.FillA, sa = entry.StrokeA, st = entry.StrokeThickness;
+        if (entry is RichTextEntry rich)
+            foreach (var range in rich.GetRangesAt(utf16Index))
+            {
+                var s = range.Style;
+                fs = s.FontSize ?? fs; cs = s.CharacterSpacing ?? cs; ws = s.WordSpacing ?? ws;
+                fr = s.FillR ?? fr; fg = s.FillG ?? fg; fb = s.FillB ?? fb; fa = s.FillA ?? fa;
+                sr = s.StrokeR ?? sr; sg = s.StrokeG ?? sg; sb = s.StrokeB ?? sb;
+                sa = s.StrokeA ?? sa; st = s.StrokeThickness ?? st;
+            }
+        return new(fs, cs, ws, fr, fg, fb, fa, sr, sg, sb, sa, st);
+    }
+
     /// <summary>
     /// Lay out the text in <paramref name="entry"/> using the specified
     /// <paramref name="font"/> (and any <see cref="FallbackFonts"/>).
     /// All rendering parameters are read from the entry.
     /// </summary>
-    public VectorPicture Layout(TextEntry entry, FontFace font)
+    private VectorPicture LayoutLegacy(TextEntry entry, FontFace font)
     {
         var result = new VectorPicture();
         if (string.IsNullOrEmpty(entry.Text))
@@ -103,7 +232,7 @@ public class NormalTypesettingEngine : ITypesettingEngine
     }
 
     /// <inheritdoc/>
-    public (float width, float height) Measure(TextEntry entry, FontFace font)
+    private (float width, float height) MeasureLegacy(TextEntry entry, FontFace font)
     {
         if (string.IsNullOrEmpty(entry.Text))
             return (0f, 0f);

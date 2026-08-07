@@ -2,6 +2,7 @@ using projectFrameCut.Drawing.Text.FontHelper.Reader;
 using projectFrameCut.Drawing.Text.FontHelper.Table;
 using System.Diagnostics;
 using System.Threading;
+using System.Text;
 
 namespace projectFrameCut.Drawing.Text.FontHelper;
 
@@ -9,6 +10,11 @@ namespace projectFrameCut.Drawing.Text.FontHelper;
 [DebuggerDisplay("{DisplayName} ({UniqueName})")]
 public sealed class FontFace : IDisposable
 {
+    /// <summary>
+    /// Optional process-wide font used exclusively for Emoji shaping and colour rendering.
+    /// The caller owns the instance and must not dispose it while layout is in progress.
+    /// </summary>
+    public static FontFace? EmojiFont { get; set; }
     private static readonly object s_registryLock = new();
     private static readonly List<WeakReference<FontFace>> s_registry = [];
     private static readonly Timer s_autoDisposeTimer = new(
@@ -41,6 +47,10 @@ public sealed class FontFace : IDisposable
     private readonly IReadOnlySet<TargetLanguage> _targetLanguages;
     private readonly IReadOnlyDictionary<TargetLanguage, string> _localizedNames;
     private bool _disposed;
+    private ColorEmojiTables? _colorEmoji;
+    private GsubEmojiTable? _emojiGsub;
+    private GposEmojiTable? _emojiGpos;
+    private bool _emojiTablesInitialized;
 
     /// <summary>Global switch for inactivity-based automatic unloading.</summary>
     public static bool GlobalAutoDisposeEnabled { get; set; } = true;
@@ -390,6 +400,22 @@ public sealed class FontFace : IDisposable
         return _cmap.GetGlyphIndex((uint)unicodeCodepoint);
     }
 
+    /// <summary>Get the glyph index for a Unicode scalar value.</summary>
+    public ushort GetGlyphIndex(Rune unicodeCodepoint)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        TouchAccess();
+        return _cmap.GetGlyphIndex((uint)unicodeCodepoint.Value);
+    }
+
+    /// <summary>Get a variation-selector glyph, or zero when the sequence is unsupported.</summary>
+    public ushort GetGlyphIndex(Rune unicodeCodepoint, Rune variationSelector)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        TouchAccess();
+        return _cmap.GetGlyphIndex((uint)unicodeCodepoint.Value, (uint)variationSelector.Value);
+    }
+
     /// <summary>Checks whether the font can actually display the specified character
     /// (i.e., it maps to a real glyph rather than the .notdef glyph).</summary>
     public bool CanDisplayTheChar(char ch)
@@ -397,6 +423,110 @@ public sealed class FontFace : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         TouchAccess();
         return _cmap.GetGlyphIndex(ch) != 0;
+    }
+
+    /// <summary>Checks whether this font maps the specified Unicode scalar to a real glyph.</summary>
+    public bool CanDisplayTheChar(Rune rune)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        TouchAccess();
+        return _cmap.GetGlyphIndex((uint)rune.Value) != 0;
+    }
+
+    internal bool HasTable(string tag) => EnsureSfntLoaded().HasTable(tag);
+    internal byte[] GetTableBytes(string tag) => EnsureSfntLoaded().GetTableData(tag).ToArray();
+
+    internal bool TryShapeColorEmoji(string textElement, ColorValue foreground,
+        out ushort glyphIndex, out ColorGlyphLayer[] layers, out int shapedAdvanceWidth)
+    {
+        glyphIndex = 0; layers = []; shapedAdvanceWidth = 0;
+        EnsureEmojiTables();
+        if (_colorEmoji is null || string.IsNullOrEmpty(textElement)) return false;
+
+        var glyphs = new List<ushort>();
+        Rune? pending = null;
+        foreach (var rune in textElement.EnumerateRunes())
+        {
+            if (rune.Value is 0xFE0E or 0xFE0F)
+            {
+                if (pending.HasValue)
+                {
+                    ushort varied = GetGlyphIndex(pending.Value, rune);
+                    glyphs.Add(varied != 0 ? varied : GetGlyphIndex(pending.Value));
+                    pending = null;
+                }
+                continue;
+            }
+            if (pending.HasValue) glyphs.Add(GetGlyphIndex(pending.Value));
+            pending = rune;
+        }
+        if (pending.HasValue) glyphs.Add(GetGlyphIndex(pending.Value));
+        if (glyphs.Count == 0 || glyphs.Any(g => g == 0))
+        {
+            Debug.WriteLine($"[Emoji] cmap failed for cluster '{textElement}': [{string.Join(",", glyphs)}]");
+            return false;
+        }
+
+        ushort[] shaped;
+        if (glyphs.Count == 1) shaped = [glyphs[0]];
+        else if (_emojiGsub is null || !_emojiGsub.TryShape(glyphs, out shaped))
+        {
+            Debug.WriteLine($"[Emoji] GSUB could not compose cluster '{textElement}', input glyphs=[{string.Join(",", glyphs)}].");
+            return false;
+        }
+        glyphIndex = shaped[0];
+        var combined = new List<ColorGlyphLayer>();
+        float cursor = 0;
+        int[] baseAdvances = shaped.Select(g => (int)GetVariedAdvanceWidth(g)).ToArray();
+        GlyphPosition[] positions = _emojiGpos?.Position(shaped, baseAdvances) ?? new GlyphPosition[shaped.Length];
+        for (int shapedIndex = 0; shapedIndex < shaped.Length; shapedIndex++)
+        {
+            ushort shapedGlyph = shaped[shapedIndex];
+            if (!_colorEmoji.TryGetLayers(shapedGlyph, foreground, out var glyphLayers))
+            {
+                Debug.WriteLine($"[Emoji] COLR has no renderable paint graph for cluster '{textElement}', glyph={shapedGlyph}.");
+                return false;
+            }
+            GlyphPosition position = positions[shapedIndex];
+            var translation = System.Numerics.Matrix3x2.CreateTranslation(
+                cursor + position.XPlacement, -position.YPlacement);
+            foreach (var layer in glyphLayers)
+                combined.Add(layer with { Transform = layer.Transform * translation });
+            int advance = baseAdvances[shapedIndex] + position.XAdvance;
+            shapedAdvanceWidth += advance;
+            cursor += advance;
+        }
+        if (combined.Count == 0)
+        {
+            Debug.WriteLine($"[Emoji] COLR produced no layers for cluster '{textElement}'.");
+            return false;
+        }
+        layers = combined.ToArray();
+        return true;
+    }
+
+    internal bool TryGetColorLayers(ushort glyphIndex, ColorValue foreground, out ColorGlyphLayer[] layers)
+    {
+        EnsureEmojiTables();
+        if (_colorEmoji is not null) return _colorEmoji.TryGetLayers(glyphIndex, foreground, out layers);
+        layers = []; return false;
+    }
+
+    private void EnsureEmojiTables()
+    {
+        if (_emojiTablesInitialized) return;
+        lock (_stateLock)
+        {
+            if (_emojiTablesInitialized) return;
+            var sfnt = EnsureSfntLoaded();
+            if (sfnt.HasTable("COLR") && sfnt.HasTable("CPAL"))
+                _colorEmoji = new ColorEmojiTables(sfnt.GetTableData("COLR").ToArray(), sfnt.GetTableData("CPAL").ToArray());
+            if (sfnt.HasTable("GSUB"))
+                _emojiGsub = new GsubEmojiTable(sfnt.GetTableData("GSUB").ToArray());
+            if (sfnt.HasTable("GPOS"))
+                _emojiGpos = new GposEmojiTable(sfnt.GetTableData("GPOS").ToArray());
+            _emojiTablesInitialized = true;
+        }
     }
 
     /// <summary>Parse and return the glyph at the given index.</summary>
@@ -670,6 +800,10 @@ public sealed class FontFace : IDisposable
             _cff = null;
             _variation = null;
             _variationInitialized = false;
+            _colorEmoji = null;
+            _emojiGsub = null;
+            _emojiGpos = null;
+            _emojiTablesInitialized = false;
         }
     }
 
@@ -689,6 +823,10 @@ public sealed class FontFace : IDisposable
                 _cff = null;
                 _variation = null;
                 _variationInitialized = false;
+                _colorEmoji = null;
+                _emojiGsub = null;
+                _emojiGpos = null;
+                _emojiTablesInitialized = false;
             }
         }
     }

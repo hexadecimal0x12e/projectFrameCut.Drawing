@@ -7,6 +7,11 @@ internal interface ICmapSubtable
 {
     ushort GetGlyphIndex(uint charCode);
 }
+
+internal interface IVariationCmapSubtable
+{
+    ushort GetGlyphIndex(uint charCode, uint variationSelector, ICmapSubtable? defaultSubtable);
+}
 [DebuggerNonUserCode()]
 internal static class CmapTable
 {
@@ -19,9 +24,10 @@ internal static class CmapTable
         ushort version = BigEndianReader.ReadUInt16(data, ref offset);
         ushort numTables = BigEndianReader.ReadUInt16(data, ref offset);
 
-        // Scan all encoding records and find the best subtable
+        // Keep the best BMP/full-Unicode subtable and format 14 variation data.
         int bestScore = -1;
         int bestSubtableOffset = -1;
+        int variationSubtableOffset = -1;
 
         int recordStart = offset;
         for (int i = 0; i < numTables; i++)
@@ -33,6 +39,10 @@ internal static class CmapTable
             ushort platformId = BigEndianReader.ReadUInt16(data, ref recOff);
             ushort encodingId = BigEndianReader.ReadUInt16(data, ref recOff);
             uint subtableOffset = BigEndianReader.ReadUInt32(data, ref recOff);
+
+            if (subtableOffset + 1 < data.Length && data[(int)subtableOffset] == 0 &&
+                data[(int)subtableOffset + 1] == 14)
+                variationSubtableOffset = (int)subtableOffset;
 
             int score = GetEncodingScore(platformId, encodingId);
             if (score > bestScore)
@@ -61,7 +71,21 @@ internal static class CmapTable
             _ => null
         };
 
-        return new CmapData(parser);
+        IVariationCmapSubtable? variation = variationSubtableOffset >= 0
+            ? ParseFormat14(data[variationSubtableOffset..])
+            : null;
+        return new CmapData(parser, variation);
+    }
+
+    private static IVariationCmapSubtable? ParseFormat14(ReadOnlySpan<byte> data)
+    {
+        if (data.Length < 10) return null;
+        int o = 0;
+        if (BigEndianReader.ReadUInt16(data, ref o) != 14) return null;
+        uint length = BigEndianReader.ReadUInt32(data, ref o);
+        uint count = BigEndianReader.ReadUInt32(data, ref o);
+        if (length > data.Length || count > (data.Length - 10) / 11) return null;
+        return new CmapFormat14(data[..(int)length].ToArray(), (int)count);
     }
 
     private static int GetEncodingScore(ushort platformId, ushort encodingId)
@@ -289,17 +313,88 @@ internal static class CmapTable
             return 0;
         }
     }
+
+    private sealed class CmapFormat14 : IVariationCmapSubtable
+    {
+        private readonly byte[] _data;
+        private readonly int _count;
+        public CmapFormat14(byte[] data, int count) { _data = data; _count = count; }
+
+        public ushort GetGlyphIndex(uint charCode, uint selector, ICmapSubtable? defaults)
+        {
+            int record = FindSelector(selector);
+            if (record < 0) return 0;
+            int o = record + 3;
+            uint defaultOffset = BigEndianReader.ReadUInt32(_data, ref o);
+            uint nonDefaultOffset = BigEndianReader.ReadUInt32(_data, ref o);
+
+            if (nonDefaultOffset != 0 && nonDefaultOffset + 4 <= _data.Length)
+            {
+                o = (int)nonDefaultOffset;
+                uint n = BigEndianReader.ReadUInt32(_data, ref o);
+                for (uint i = 0; i < n && o + 5 <= _data.Length; i++)
+                {
+                    uint cp = ReadUInt24(_data, ref o);
+                    ushort glyph = BigEndianReader.ReadUInt16(_data, ref o);
+                    if (cp == charCode) return glyph;
+                    if (cp > charCode) break;
+                }
+            }
+
+            if (defaultOffset != 0 && defaultOffset + 4 <= _data.Length)
+            {
+                o = (int)defaultOffset;
+                uint n = BigEndianReader.ReadUInt32(_data, ref o);
+                for (uint i = 0; i < n && o + 4 <= _data.Length; i++)
+                {
+                    uint start = ReadUInt24(_data, ref o);
+                    uint end = start + _data[o++];
+                    if (charCode >= start && charCode <= end)
+                        return defaults?.GetGlyphIndex(charCode) ?? 0;
+                    if (start > charCode) break;
+                }
+            }
+            return 0;
+        }
+
+        private int FindSelector(uint selector)
+        {
+            int lo = 0, hi = _count - 1;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) / 2;
+                int o = 10 + mid * 11;
+                uint value = ReadUInt24(_data, ref o);
+                if (value < selector) lo = mid + 1;
+                else if (value > selector) hi = mid - 1;
+                else return o;
+            }
+            return -1;
+        }
+    }
+
+    private static uint ReadUInt24(ReadOnlySpan<byte> data, ref int offset)
+    {
+        uint value = ((uint)data[offset] << 16) | ((uint)data[offset + 1] << 8) | data[offset + 2];
+        offset += 3;
+        return value;
+    }
 }
 
 internal readonly struct CmapData
 {
     private readonly ICmapSubtable? _subtable;
+    private readonly IVariationCmapSubtable? _variation;
 
-    internal CmapData(ICmapSubtable? subtable)
+    internal CmapData(ICmapSubtable? subtable, IVariationCmapSubtable? variation = null)
     {
         _subtable = subtable;
+        _variation = variation;
     }
 
     public ushort GetGlyphIndex(uint charCode) =>
         _subtable?.GetGlyphIndex(charCode) ?? 0;
+
+    public ushort GetGlyphIndex(uint charCode, uint variationSelector) =>
+        _variation?.GetGlyphIndex(charCode, variationSelector, _subtable) ?? 0;
 }

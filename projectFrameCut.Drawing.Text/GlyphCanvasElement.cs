@@ -1,5 +1,6 @@
 using projectFrameCut.Drawing.Vector;
 using projectFrameCut.Drawing.Text.FontHelper.Table;
+using System.Numerics;
 
 namespace projectFrameCut.Drawing.Text;
 
@@ -43,6 +44,9 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
 
     /// <summary>Desired glyph height in normalized canvas coordinates (0–1).</summary>
     public float FontSize { get; set; } = 0.1f;
+
+    /// <summary>Optional COLR paint transform expressed in font design units.</summary>
+    public Matrix3x2 GlyphTransform { get; set; } = Matrix3x2.Identity;
 
     // ──────────────────────────────────────────────
     //  Debug
@@ -160,6 +164,14 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
         foreach (var sourceContour in _glyph.Contours)
         {
             var pts = FlattenContour(sourceContour, scale);
+            if (!GlyphTransform.IsIdentity)
+            {
+                for (int i = 0; i < pts.Count; i++)
+                {
+                    Vector2 v = Vector2.Transform(new Vector2(pts[i].X / scale, pts[i].Y / scale), GlyphTransform);
+                    pts[i] = new Point(v.X * scale, v.Y * scale);
+                }
+            }
             if (pts.Count >= 3)
                 flattenedContours.Add(pts.ToArray());
         }

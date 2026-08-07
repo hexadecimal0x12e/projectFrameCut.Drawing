@@ -191,7 +191,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
                 foreach (var seg in segments)
                 {
-                    if (seg is PolygonVectorSegment poly)
+                    if (seg is GradientPolygonVectorSegment)
+                        otherSegs.Add(seg);
+                    else if (seg is PolygonVectorSegment poly)
                     {
                         bool hasFill = poly.FillA > 0f;
                         bool hasStroke = poly.StrokeA > 0f && poly.Thickness > 0f;
@@ -240,10 +242,35 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 CubicBezierVectorSegment s => CubicBezierToSvg(s, ox, oy, scaleX, scaleY),
                 QuadraticBezierVectorSegment s => QuadraticBezierToSvg(s, ox, oy, scaleX, scaleY),
                 ArcVectorSegment s => ArcToSvg(s, ox, oy, scaleX, scaleY),
+                GradientPolygonVectorSegment s => GradientPolygonToSvg(s, ox, oy, scaleX, scaleY),
                 PolygonVectorSegment s => PolygonToSvg(s, ox, oy, scaleX, scaleY),
                 PolylineVectorSegment s => PolylineToSvg(s, ox, oy, scaleX, scaleY),
                 _ => null,
             };
+        }
+
+        private static string GradientPolygonToSvg(GradientPolygonVectorSegment s,
+            float ox, float oy, float scaleX, float scaleY)
+        {
+            string id = "g" + Guid.NewGuid().ToString("N");
+            var d = new StringBuilder(); AppendContourPath(d, s.Points, ox, oy, scaleX, scaleY);
+            if (s.Holes is not null) foreach (var h in s.Holes) AppendContourPath(d, h, ox, oy, scaleX, scaleY);
+            string spread = s.Gradient.ExtendMode switch
+            { VectorGradientExtendMode.Repeat => "repeat", VectorGradientExtendMode.Reflect => "reflect", _ => "pad" };
+            var stops = new StringBuilder();
+            foreach (var stop in s.Gradient.Stops)
+                stops.Append($"<stop offset=\"{Fmt(stop.Offset * 100)}%\" stop-color=\"{ColorToHex(stop.R, stop.G, stop.B)}\" stop-opacity=\"{Fmt(stop.A * s.Opacity)}\"/>");
+            string def;
+            if (s.Gradient.Kind == VectorGradientKind.Linear)
+                def = $"<linearGradient id=\"{id}\" gradientUnits=\"userSpaceOnUse\" spreadMethod=\"{spread}\" x1=\"{Fmt(CX(s.Gradient.X0, ox, scaleX))}\" y1=\"{Fmt(CY(s.Gradient.Y0, oy, scaleY))}\" x2=\"{Fmt(CX(s.Gradient.X1, ox, scaleX))}\" y2=\"{Fmt(CY(s.Gradient.Y1, oy, scaleY))}\">{stops}</linearGradient>";
+            else if (s.Gradient.Kind == VectorGradientKind.Radial)
+                def = $"<radialGradient id=\"{id}\" gradientUnits=\"userSpaceOnUse\" spreadMethod=\"{spread}\" fx=\"{Fmt(CX(s.Gradient.X0, ox, scaleX))}\" fy=\"{Fmt(CY(s.Gradient.Y0, oy, scaleY))}\" fr=\"{Fmt(s.Gradient.Radius0 * scaleX)}\" cx=\"{Fmt(CX(s.Gradient.X1, ox, scaleX))}\" cy=\"{Fmt(CY(s.Gradient.Y1, oy, scaleY))}\" r=\"{Fmt(s.Gradient.Radius1 * scaleX)}\">{stops}</radialGradient>";
+            else
+            {
+                var first = s.Gradient.Stops[0];
+                return $"<path fill-rule=\"evenodd\" d=\"{d}\" fill=\"{ColorToHex(first.R, first.G, first.B)}\" fill-opacity=\"{Fmt(first.A * s.Opacity)}\"/>";
+            }
+            return $"<defs>{def}</defs><path fill-rule=\"evenodd\" d=\"{d}\" fill=\"url(#{id})\"/>";
         }
 
         /// <summary>

@@ -2,6 +2,7 @@ using projectFrameCut.Drawing.Text.Entry;
 using projectFrameCut.Drawing.Text.FontHelper;
 using System.Diagnostics;
 using System.Text;
+using System.Globalization;
 
 namespace projectFrameCut.Drawing.Text.Typology
 {
@@ -249,6 +250,10 @@ namespace projectFrameCut.Drawing.Text.Typology
             if (string.IsNullOrEmpty(entry.Text) || targetWidth <= 0)
                 return entry.Text;
 
+            // Preserve extended grapheme clusters (surrogate Emoji, modifiers and ZWJ sequences).
+            if (entry.Text.Any(char.IsSurrogate) || entry.Text.Contains('\u200D') || entry.Text.Contains('\uFE0F'))
+                return BreakGraphemeClusters(entry, font, targetWidth, NewLine);
+
             // Chinese or Japanese need special way to process as they don't have space between words
             if (entry.Text.Any(c => (c >= '一' && c <= 0x9FFF) || (c >= 'ぁ' && c <= 'ゟ') || (c >= '゠' && c <= 'ヿ')))
             {
@@ -263,6 +268,23 @@ namespace projectFrameCut.Drawing.Text.Typology
             {
                 return BreakLatinText(entry, font, targetWidth, NewLine, useDashWhenWordAcrossLineInLatin);
             }
+        }
+
+        private static string BreakGraphemeClusters(TextEntry entry, FontFace font, float targetWidth, string newLine)
+        {
+            var engine = new NormalTypesettingEngine();
+            var sb = new StringBuilder(); float width = 0f;
+            var e = StringInfo.GetTextElementEnumerator(entry.Text);
+            while (e.MoveNext())
+            {
+                string element = e.GetTextElement();
+                if (element is "\n" or "\r" or "\r\n") { sb.Append(newLine); width = 0; continue; }
+                var single = entry with { Text = element };
+                float advance = engine.Measure(single, font).width + entry.CharacterSpacing;
+                if (width > 0 && width + advance > targetWidth) { sb.Append(newLine); width = 0; }
+                sb.Append(element); width += advance;
+            }
+            return sb.ToString();
         }
 
 

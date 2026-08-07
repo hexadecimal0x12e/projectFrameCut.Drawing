@@ -164,6 +164,9 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 case ArcVectorSegment s:
                     RenderArc(ctx, s, ox, oy);
                     break;
+                case GradientPolygonVectorSegment s:
+                    RenderGradientPolygon(ctx, s, ox, oy);
+                    break;
                 case PolygonVectorSegment s:
                     RenderPolygon(ctx, s, ox, oy);
                     break;
@@ -765,6 +768,117 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             }
         }
 
+        private static void RenderGradientPolygon(RenderContext ctx, GradientPolygonVectorSegment s, float ox, float oy)
+        {
+            if (s.Points.Length < 3 || s.Gradient.Stops.Length == 0 || s.Opacity <= 0) return;
+            float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+            foreach (var p in s.Points)
+            {
+                float x = CX(ctx, p.X, ox), y = CY(ctx, p.Y, oy);
+                minX = MathF.Min(minX, x); maxX = MathF.Max(maxX, x);
+                minY = MathF.Min(minY, y); maxY = MathF.Max(maxY, y);
+            }
+            int x0 = Math.Clamp((int)MathF.Floor(minX), 0, ctx.width - 1), x1 = Math.Clamp((int)MathF.Ceiling(maxX), 0, ctx.width - 1);
+            int y0 = Math.Clamp((int)MathF.Floor(minY), 0, ctx.height - 1), y1 = Math.Clamp((int)MathF.Ceiling(maxY), 0, ctx.height - 1);
+            Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = ctx.cancellationToken }, py =>
+            {
+                float ly = (py + .5f - oy) / ctx.scaleY;
+                for (int px = x0; px <= x1; px++)
+                {
+                    float lx = (px + .5f - ox) / ctx.scaleX;
+                    if (!Inside(s.Points, lx, ly)) continue;
+                    bool inHole = false;
+                    if (s.Holes is not null) foreach (var hole in s.Holes) if (Inside(hole, lx, ly)) { inHole = true; break; }
+                    if (inHole) continue;
+                    var c = SampleGradient(s.Gradient, lx, ly);
+                    BlendPixel(ctx, px, py, c.r, c.g, c.b, c.a * s.Opacity);
+                }
+            });
+        }
+
+        private static bool Inside(Point[] polygon, float x, float y)
+        {
+            bool inside = false;
+            for (int i = 0, j = polygon.Length - 1; i < polygon.Length; j = i++)
+            {
+                var a = polygon[i]; var b = polygon[j];
+                if ((a.Y > y) != (b.Y > y) && x < (b.X - a.X) * (y - a.Y) / (b.Y - a.Y) + a.X) inside = !inside;
+            }
+            return inside;
+        }
+
+        private static (ushort r, ushort g, ushort b, float a) SampleGradient(VectorGradientBrush g, float x, float y)
+        {
+            float t;
+            if (g.Kind == VectorGradientKind.Linear)
+            {
+                float dx = g.X1 - g.X0, dy = g.Y1 - g.Y0;
+                float gradientLengthSquared = dx * dx + dy * dy;
+                t = gradientLengthSquared <= 1e-12f
+                    ? 0
+                    : ((x - g.X0) * dx + (y - g.Y0) * dy) / gradientLengthSquared;
+            }
+            else if (g.Kind == VectorGradientKind.Radial)
+            {
+                float qx = x - g.X0, qy = y - g.Y0;
+                float dcx = g.X1 - g.X0, dcy = g.Y1 - g.Y0, dr = g.Radius1 - g.Radius0;
+                float qa = dcx * dcx + dcy * dcy - dr * dr;
+                float qb = -2f * (qx * dcx + qy * dcy + g.Radius0 * dr);
+                float qc = qx * qx + qy * qy - g.Radius0 * g.Radius0;
+                if (MathF.Abs(qa) < 1e-8f) t = MathF.Abs(qb) < 1e-8f ? 0 : -qc / qb;
+                else
+                {
+                    float disc = MathF.Max(0, qb * qb - 4 * qa * qc);
+                    float firstRoot = (-qb - MathF.Sqrt(disc)) / (2 * qa);
+                    float secondRoot = (-qb + MathF.Sqrt(disc)) / (2 * qa);
+                    t = firstRoot >= 0 && secondRoot >= 0
+                        ? MathF.Min(firstRoot, secondRoot)
+                        : MathF.Max(firstRoot, secondRoot);
+                }
+            }
+            else
+            {
+                float angle = MathF.Atan2(y - g.Y0, x - g.X0);
+                float span = g.EndAngle - g.StartAngle;
+                t = MathF.Abs(span) < 1e-8f ? 0 : (angle - g.StartAngle) / span;
+            }
+            var stops = g.Stops;
+            float firstOffset = stops[0].Offset, lastOffset = stops[^1].Offset;
+            float interval = lastOffset - firstOffset;
+            if (interval > 1e-8f)
+            {
+                if (g.ExtendMode == VectorGradientExtendMode.Repeat)
+                    t = firstOffset + PositiveModulo(t - firstOffset, interval);
+                else if (g.ExtendMode == VectorGradientExtendMode.Reflect)
+                {
+                    float repeated = PositiveModulo(t - firstOffset, interval * 2f);
+                    t = firstOffset + (repeated <= interval ? repeated : interval * 2f - repeated);
+                }
+                else t = Math.Clamp(t, firstOffset, lastOffset);
+            }
+            else t = firstOffset;
+
+            if (t < firstOffset) return (stops[0].R, stops[0].G, stops[0].B, stops[0].A);
+            int right = 0;
+            while (right < stops.Length && t >= stops[right].Offset) right++;
+            if (right == 0) return (stops[0].R, stops[0].G, stops[0].B, stops[0].A);
+            if (right == stops.Length)
+            {
+                var last = stops[^1]; return (last.R, last.G, last.B, last.A);
+            }
+            var leftStop = stops[right - 1];
+            var rightStop = stops[right];
+            float stopDistance = rightStop.Offset - leftStop.Offset;
+            float u = stopDistance <= 1e-8f ? 0 : (t - leftStop.Offset) / stopDistance;
+            return ((ushort)(leftStop.R + (rightStop.R - leftStop.R) * u),
+                (ushort)(leftStop.G + (rightStop.G - leftStop.G) * u),
+                (ushort)(leftStop.B + (rightStop.B - leftStop.B) * u),
+                leftStop.A + (rightStop.A - leftStop.A) * u);
+        }
+
+        private static float PositiveModulo(float value, float modulus) =>
+            value - MathF.Floor(value / modulus) * modulus;
+
         // ---------------------------------------------------------------
         // Polyline (always stroke)
         // ---------------------------------------------------------------
@@ -1084,6 +1198,14 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     X4 = s.X4 * cosA - s.Y4 * sinA,
                     Y4 = s.X4 * sinA + s.Y4 * cosA,
                 },
+                GradientPolygonVectorSegment s => s with
+                {
+                    Points = Array.ConvertAll(s.Points, p => new Point(
+                        p.X * cosA - p.Y * sinA, p.X * sinA + p.Y * cosA)),
+                    Holes = s.Holes?.Select(h => Array.ConvertAll(h, p => new Point(
+                        p.X * cosA - p.Y * sinA, p.X * sinA + p.Y * cosA))).ToArray(),
+                    Gradient = RotateGradient(s.Gradient, cosA, sinA),
+                },
                 PolygonVectorSegment s => s with
                 {
                     Points = Array.ConvertAll(s.Points, p => new Point(
@@ -1115,6 +1237,23 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     StartAngle = s.StartAngle + MathF.Atan2(sinA, cosA),
                 },
                 _ => seg,
+            };
+        }
+
+        private static VectorGradientBrush RotateGradient(VectorGradientBrush g, float c, float s)
+        {
+            (float x, float y) P(float x, float y) => (x * c - y * s, x * s + y * c);
+            var p0 = P(g.X0, g.Y0); var p1 = P(g.X1, g.Y1); var p2 = P(g.X2, g.Y2);
+            return g with
+            {
+                X0 = p0.x,
+                Y0 = p0.y,
+                X1 = p1.x,
+                Y1 = p1.y,
+                X2 = p2.x,
+                Y2 = p2.y,
+                StartAngle = g.StartAngle + MathF.Atan2(s, c),
+                EndAngle = g.EndAngle + MathF.Atan2(s, c)
             };
         }
 

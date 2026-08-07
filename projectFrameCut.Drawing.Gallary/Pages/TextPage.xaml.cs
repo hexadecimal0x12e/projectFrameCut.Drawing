@@ -45,6 +45,24 @@ public partial class TextPage : ContentPage
             FontPicker.SelectedIndex = _fonts.Count - 1;
         };
         MainScroll.GestureRecognizers.Add(dropGesture);
+        var emojiPath = @"C:\Windows\Fonts\seguiemj.ttf";
+        if(File.Exists(emojiPath))
+        {
+            try
+            {
+                var fonts = FontFace.AutoLoad(emojiPath);
+                FontFace.EmojiFont = fonts.FirstOrDefault();
+                System.Diagnostics.Debug.WriteLine($"Loaded emoji font: {FontFace.EmojiFont?.DisplayName}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to load emoji font: {ex}");
+            }
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine($"Emoji font file not found at: {emojiPath}");
+        }
     }
 
     protected override void OnAppearing()

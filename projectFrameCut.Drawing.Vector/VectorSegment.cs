@@ -145,6 +145,30 @@ namespace projectFrameCut.Drawing.Vector
         public Point[][]? Holes { get; init; }
     }
 
+    public enum VectorGradientKind { Linear, Radial, Sweep }
+    public enum VectorGradientExtendMode { Pad, Repeat, Reflect }
+    public readonly record struct VectorGradientStop(float Offset, ushort R, ushort G, ushort B, float A);
+
+    /// <summary>A gradient in the same local coordinate space as its polygon.</summary>
+    public sealed record VectorGradientBrush
+    {
+        public required VectorGradientKind Kind { get; init; }
+        public VectorGradientExtendMode ExtendMode { get; init; }
+        public required VectorGradientStop[] Stops { get; init; }
+        public float X0 { get; init; } public float Y0 { get; init; }
+        public float X1 { get; init; } public float Y1 { get; init; }
+        public float X2 { get; init; } public float Y2 { get; init; }
+        public float Radius0 { get; init; } public float Radius1 { get; init; }
+        public float StartAngle { get; init; } public float EndAngle { get; init; }
+    }
+
+    /// <summary>A polygon whose fill is evaluated from a COLR-compatible gradient.</summary>
+    public record GradientPolygonVectorSegment : PolygonVectorSegment
+    {
+        public required VectorGradientBrush Gradient { get; init; }
+        public float Opacity { get; init; } = 1f;
+    }
+
     /// <summary>An open polyline segment defined by a list of vertices.</summary>
     public record PolylineVectorSegment : VectorSegment
     {
