@@ -46,7 +46,11 @@ public partial class TextPage : ContentPage
         };
         MainScroll.GestureRecognizers.Add(dropGesture);
         var emojiPath = @"C:\Windows\Fonts\seguiemj.ttf";
-        if(File.Exists(emojiPath))
+        if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "NotoColorEmoji-Regular.ttf")))
+        {
+            emojiPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "NotoColorEmoji-Regular.ttf");
+        }
+        if (File.Exists(emojiPath))
         {
             try
             {

@@ -743,13 +743,15 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
             bool hasFill = s.FillA > 0f;
             bool hasStroke = s.Thickness > 0f && s.StrokeA > 0f;
+            bool hasAdditionalContours = s.AdditionalContours is { Length: > 0 };
             bool hasHoles = s.Holes is { Length: > 0 };
 
             if (hasFill)
             {
-                if (hasHoles)
+                if (hasAdditionalContours || hasHoles)
                 {
-                    FillPolygonScanlineNonZero(ctx, canvasPts, s.Holes!, ox, oy, s.FillR, s.FillG, s.FillB, s.FillA);
+                    FillPolygonScanlineNonZero(ctx, canvasPts, s.AdditionalContours, s.Holes, ox, oy,
+                        s.FillR, s.FillG, s.FillB, s.FillA);
                 }
                 else
                 {
@@ -770,41 +772,99 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
 
         private static void RenderGradientPolygon(RenderContext ctx, GradientPolygonVectorSegment s, float ox, float oy)
         {
-            if (s.Points.Length < 3 || s.Gradient.Stops.Length == 0 || s.Opacity <= 0) return;
-            float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
-            foreach (var p in s.Points)
+            if (s.Points.Length < 3) return;
+            bool hasFill = s.Gradient.Stops.Length > 0 && s.Opacity > 0;
+            bool hasStroke = s.Thickness > 0f && s.StrokeA > 0f;
+            if (!hasFill && !hasStroke) return;
+
+            if (hasFill)
             {
-                float x = CX(ctx, p.X, ox), y = CY(ctx, p.Y, oy);
-                minX = MathF.Min(minX, x); maxX = MathF.Max(maxX, x);
-                minY = MathF.Min(minY, y); maxY = MathF.Max(maxY, y);
-            }
-            int x0 = Math.Clamp((int)MathF.Floor(minX), 0, ctx.width - 1), x1 = Math.Clamp((int)MathF.Ceiling(maxX), 0, ctx.width - 1);
-            int y0 = Math.Clamp((int)MathF.Floor(minY), 0, ctx.height - 1), y1 = Math.Clamp((int)MathF.Ceiling(maxY), 0, ctx.height - 1);
-            Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = ctx.cancellationToken }, py =>
-            {
-                float ly = (py + .5f - oy) / ctx.scaleY;
-                for (int px = x0; px <= x1; px++)
+                float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+                void IncludeBounds(Point[] contour)
                 {
-                    float lx = (px + .5f - ox) / ctx.scaleX;
-                    if (!Inside(s.Points, lx, ly)) continue;
-                    bool inHole = false;
-                    if (s.Holes is not null) foreach (var hole in s.Holes) if (Inside(hole, lx, ly)) { inHole = true; break; }
-                    if (inHole) continue;
-                    var c = SampleGradient(s.Gradient, lx, ly);
-                    BlendPixel(ctx, px, py, c.r, c.g, c.b, c.a * s.Opacity);
+                    foreach (var p in contour)
+                    {
+                        float x = CX(ctx, p.X, ox), y = CY(ctx, p.Y, oy);
+                        minX = MathF.Min(minX, x); maxX = MathF.Max(maxX, x);
+                        minY = MathF.Min(minY, y); maxY = MathF.Max(maxY, y);
+                    }
                 }
-            });
+                IncludeBounds(s.Points);
+                if (s.AdditionalContours is not null)
+                    foreach (Point[] contour in s.AdditionalContours) IncludeBounds(contour);
+                if (s.Holes is not null)
+                    foreach (Point[] contour in s.Holes) IncludeBounds(contour);
+                int x0 = Math.Clamp((int)MathF.Floor(minX), 0, ctx.width - 1), x1 = Math.Clamp((int)MathF.Ceiling(maxX), 0, ctx.width - 1);
+                int y0 = Math.Clamp((int)MathF.Floor(minY), 0, ctx.height - 1), y1 = Math.Clamp((int)MathF.Ceiling(maxY), 0, ctx.height - 1);
+                Parallel.For(y0, y1 + 1, new ParallelOptions { CancellationToken = ctx.cancellationToken }, py =>
+                {
+                    for (int px = x0; px <= x1; px++)
+                    {
+                        // Gradient polygons bypass the scanline fill path. Use a
+                        // small fixed coverage grid so coloured glyph edges remain
+                        // clean even when the caller does not enable global SSAA.
+                        const float q0 = .25f, q1 = .75f;
+                        int covered = 0;
+                        for (int sampleY = 0; sampleY < 2; sampleY++)
+                        for (int sampleX = 0; sampleX < 2; sampleX++)
+                        {
+                            float sx = sampleX == 0 ? q0 : q1;
+                            float sy = sampleY == 0 ? q0 : q1;
+                            float lx = (px + sx - ox) / ctx.scaleX;
+                            float ly = (py + sy - oy) / ctx.scaleY;
+                            if (!InsideNonZero(s.Points, s.AdditionalContours, s.Holes, lx, ly)) continue;
+                            covered++;
+                        }
+                        if (covered == 0) continue;
+                        float centerX = (px + .5f - ox) / ctx.scaleX;
+                        float centerY = (py + .5f - oy) / ctx.scaleY;
+                        var c = SampleGradient(s.Gradient, centerX, centerY);
+                        BlendPixel(ctx, px, py, c.r, c.g, c.b, c.a * s.Opacity * (covered * .25f));
+                    }
+                });
+            }
+
+            if (hasStroke)
+            {
+                for (int i = 0; i < s.Points.Length; i++)
+                {
+                    int j = (i + 1) % s.Points.Length;
+                    DrawThickLine(ctx, CX(ctx, s.Points[i].X, ox), CY(ctx, s.Points[i].Y, oy),
+                        CX(ctx, s.Points[j].X, ox), CY(ctx, s.Points[j].Y, oy),
+                        s.Thickness, s.StrokeR, s.StrokeG, s.StrokeB, s.StrokeA);
+                }
+            }
         }
 
-        private static bool Inside(Point[] polygon, float x, float y)
+        private static bool InsideNonZero(Point[] primary, Point[][]? additionalContours, Point[][]? holes, float x, float y)
         {
-            bool inside = false;
+            int winding = WindingNumber(primary, x, y);
+            if (additionalContours is not null)
+                foreach (Point[] contour in additionalContours)
+                    winding += WindingNumber(contour, x, y);
+            if (holes is not null)
+                foreach (Point[] contour in holes)
+                    winding += WindingNumber(contour, x, y);
+            return winding != 0;
+        }
+
+        private static int WindingNumber(ReadOnlySpan<Point> polygon, float x, float y)
+        {
+            int winding = 0;
             for (int i = 0, j = polygon.Length - 1; i < polygon.Length; j = i++)
             {
                 var a = polygon[i]; var b = polygon[j];
-                if ((a.Y > y) != (b.Y > y) && x < (b.X - a.X) * (y - a.Y) / (b.Y - a.Y) + a.X) inside = !inside;
+                float cross = (b.X - a.X) * (y - a.Y) - (x - a.X) * (b.Y - a.Y);
+                if (a.Y <= y)
+                {
+                    if (b.Y > y && cross > 0f) winding++;
+                }
+                else if (b.Y <= y && cross < 0f)
+                {
+                    winding--;
+                }
             }
-            return inside;
+            return winding;
         }
 
         private static (ushort r, ushort g, ushort b, float a) SampleGradient(VectorGradientBrush g, float x, float y)
@@ -870,10 +930,58 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             var rightStop = stops[right];
             float stopDistance = rightStop.Offset - leftStop.Offset;
             float u = stopDistance <= 1e-8f ? 0 : (t - leftStop.Offset) / stopDistance;
-            return ((ushort)(leftStop.R + (rightStop.R - leftStop.R) * u),
-                (ushort)(leftStop.G + (rightStop.G - leftStop.G) * u),
-                (ushort)(leftStop.B + (rightStop.B - leftStop.B) * u),
-                leftStop.A + (rightStop.A - leftStop.A) * u);
+            u = ApplyGradientMidpoint(u, leftStop.Midpoint);
+            u = g.InterpolationMode switch
+            {
+                VectorGradientInterpolationMode.SmoothStep => u * u * (3f - 2f * u),
+                VectorGradientInterpolationMode.SmootherStep => u * u * u * (u * (u * 6f - 15f) + 10f),
+                VectorGradientInterpolationMode.Discrete => 0f,
+                _ => u,
+            };
+            return InterpolateGradientStops(leftStop, rightStop, u, g.ColorSpace, g.AlphaMode);
+        }
+
+        private static float ApplyGradientMidpoint(float value, float midpoint)
+        {
+            value = Math.Clamp(value, 0f, 1f);
+            midpoint = Math.Clamp(midpoint, 0f, 1f);
+            if (midpoint <= 1e-6f) return value <= 0f ? 0f : 0.5f + value * 0.5f;
+            if (midpoint >= 1f - 1e-6f) return value >= 1f ? 1f : value * 0.5f;
+            return value <= midpoint
+                ? value * (0.5f / midpoint)
+                : 0.5f + (value - midpoint) * (0.5f / (1f - midpoint));
+        }
+
+        private static (ushort r, ushort g, ushort b, float a) InterpolateGradientStops(
+            VectorGradientStop left, VectorGradientStop right, float amount,
+            VectorGradientColorSpace colorSpace, VectorGradientAlphaMode alphaMode)
+        {
+            float a = left.A + (right.A - left.A) * amount;
+            float ConvertIn(ushort channel)
+            {
+                float value = channel / 65535f;
+                if (colorSpace != VectorGradientColorSpace.LinearRgb) return value;
+                return value <= 0.04045f ? value / 12.92f : MathF.Pow((value + 0.055f) / 1.055f, 2.4f);
+            }
+            float ConvertOut(float value)
+            {
+                value = Math.Clamp(value, 0f, 1f);
+                if (colorSpace != VectorGradientColorSpace.LinearRgb) return value;
+                return value <= 0.0031308f ? value * 12.92f : 1.055f * MathF.Pow(value, 1f / 2.4f) - 0.055f;
+            }
+            float Mix(ushort l, ushort r)
+            {
+                float lv = ConvertIn(l), rv = ConvertIn(r);
+                if (alphaMode == VectorGradientAlphaMode.Premultiplied)
+                {
+                    float premultiplied = lv * left.A + (rv * right.A - lv * left.A) * amount;
+                    return a <= 1e-8f ? 0f : ConvertOut(premultiplied / a);
+                }
+                return ConvertOut(lv + (rv - lv) * amount);
+            }
+            static ushort Channel(float value) => (ushort)Math.Clamp(MathF.Round(value * 65535f), 0f, 65535f);
+            return (Channel(Mix(left.R, right.R)), Channel(Mix(left.G, right.G)),
+                Channel(Mix(left.B, right.B)), a);
         }
 
         private static float PositiveModulo(float value, float modulus) =>
@@ -1013,10 +1121,13 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                         continue;
 
                     var xEnd = intersections[k].x;
-                    var xL = Math.Clamp((int)(xStart + 0.5f), 0, ctx.width - 1);
-                    var xR = Math.Clamp((int)(xEnd + 0.5f), 0, ctx.width - 1);
+                    // Fill pixels whose centres lie in [xStart, xEnd). The
+                    // former rounded-and-inclusive end point added a full
+                    // pixel to narrow strokes and consumed small counters.
+                    int xL = Math.Clamp((int)MathF.Ceiling(xStart - 0.5f), 0, ctx.width);
+                    int xEndExclusive = Math.Clamp((int)MathF.Ceiling(xEnd - 0.5f), 0, ctx.width);
 
-                    for (var px = xL; px <= xR; px++)
+                    for (var px = xL; px < xEndExclusive; px++)
                     {
                         var idx = py * ctx.width + px;
                         if (alpha >= 1f)
@@ -1038,23 +1149,25 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         }
 
         // ---------------------------------------------------------------
-        // Non-zero winding polygon fill (outer + holes)
+        // Non-zero winding multi-contour polygon fill
         // ---------------------------------------------------------------
 
         private static void FillPolygonScanlineNonZero(
             RenderContext ctx,
             ReadOnlySpan<(float x, float y)> outerPts,
-            Point[][] holes,
+            Point[][]? additionalContours,
+            Point[][]? holes,
             float ox, float oy,
             ushort r, ushort g, ushort b, float alpha)
         {
-            // Collect all edge segments: outer + every hole contour. Preserve
-            // edge direction so the non-zero winding rule can distinguish
-            // filled regions from counters, including outlines that touch or
-            // nearly touch at shared scanlines.
+            // Preserve every contour direction. The non-zero winding rule then
+            // handles counters and intentional overlaps without guessing a
+            // containment hierarchy.
             int totalEdges = outerPts.Length;
-            foreach (var h in holes)
-                totalEdges += h.Length;
+            if (additionalContours is not null)
+                foreach (Point[] contour in additionalContours) totalEdges += contour.Length;
+            if (holes is not null)
+                foreach (Point[] contour in holes) totalEdges += contour.Length;
 
             var edges = new (float yMin, float yMax, float xAtYMin, float dx, int windingDelta)[totalEdges];
             int ei = 0;
@@ -1074,17 +1187,23 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
             }
 
             AddEdges(outerPts);
-            Span<(float x, float y)> holeBuffer = stackalloc (float, float)[256];
-            foreach (var hole in holes)
+            void AddNormalizedContours(Point[][]? contours)
             {
-                Span<(float x, float y)> holePts = hole.Length <= 256
-                    ? holeBuffer[..hole.Length]
-                    : new (float, float)[hole.Length];
-                for (int i = 0; i < hole.Length; i++)
-                    holePts[i] = (CX(ctx, hole[i].X, ox), CY(ctx, hole[i].Y, oy));
-                AddEdges(holePts);
+                if (contours is null) return;
+                foreach (Point[] contour in contours)
+                {
+                    Span<(float x, float y)> contourPts = contour.Length <= 256
+                        ? stackalloc (float, float)[contour.Length]
+                        : new (float, float)[contour.Length];
+                    for (int i = 0; i < contour.Length; i++)
+                        contourPts[i] = (CX(ctx, contour[i].X, ox), CY(ctx, contour[i].Y, oy));
+                    AddEdges(contourPts);
+                }
             }
+            AddNormalizedContours(additionalContours);
+            AddNormalizedContours(holes);
             int edgeCount = ei;
+            if (edgeCount == 0) return;
 
             // Find Y bounds
             float minY = float.MaxValue, maxY = float.MinValue;
@@ -1130,10 +1249,13 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                         continue;
 
                     float xEnd = intersections[k].x;
-                    int xL = Math.Clamp((int)(xStart + 0.5f), 0, ctx.width - 1);
-                    int xR = Math.Clamp((int)(xEnd + 0.5f), 0, ctx.width - 1);
+                    // Fill pixels whose centres lie in [xStart, xEnd). This
+                    // avoids expanding both the glyph outline and its holes
+                    // by an extra high-resolution pixel.
+                    int xL = Math.Clamp((int)MathF.Ceiling(xStart - 0.5f), 0, ctx.width);
+                    int xEndExclusive = Math.Clamp((int)MathF.Ceiling(xEnd - 0.5f), 0, ctx.width);
 
-                    for (int px = xL; px <= xR; px++)
+                    for (int px = xL; px < xEndExclusive; px++)
                     {
                         int idx = py * ctx.width + px;
                         if (alpha >= 1f)
@@ -1202,6 +1324,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                 {
                     Points = Array.ConvertAll(s.Points, p => new Point(
                         p.X * cosA - p.Y * sinA, p.X * sinA + p.Y * cosA)),
+                    AdditionalContours = s.AdditionalContours?.Select(contour => Array.ConvertAll(contour, p => new Point(
+                        p.X * cosA - p.Y * sinA, p.X * sinA + p.Y * cosA))).ToArray(),
                     Holes = s.Holes?.Select(h => Array.ConvertAll(h, p => new Point(
                         p.X * cosA - p.Y * sinA, p.X * sinA + p.Y * cosA))).ToArray(),
                     Gradient = RotateGradient(s.Gradient, cosA, sinA),
@@ -1211,6 +1335,8 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
                     Points = Array.ConvertAll(s.Points, p => new Point(
                         p.X * cosA - p.Y * sinA,
                         p.X * sinA + p.Y * cosA)),
+                    AdditionalContours = s.AdditionalContours?.Select(contour => Array.ConvertAll(contour, p => new Point(
+                        p.X * cosA - p.Y * sinA, p.X * sinA + p.Y * cosA))).ToArray(),
                     Holes = s.Holes?.Select(h => Array.ConvertAll(h, p => new Point(
                         p.X * cosA - p.Y * sinA,
                         p.X * sinA + p.Y * cosA))).ToArray(),

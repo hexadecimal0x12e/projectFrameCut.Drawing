@@ -491,7 +491,11 @@ public sealed class FontFace : IDisposable
             var translation = System.Numerics.Matrix3x2.CreateTranslation(
                 cursor + position.XPlacement, -position.YPlacement);
             foreach (var layer in glyphLayers)
-                combined.Add(layer with { Transform = layer.Transform * translation });
+                combined.Add(layer with
+                {
+                    GlyphTransform = layer.GlyphTransform * translation,
+                    BrushTransform = layer.BrushTransform * translation,
+                });
             int advance = baseAdvances[shapedIndex] + position.XAdvance;
             shapedAdvanceWidth += advance;
             cursor += advance;

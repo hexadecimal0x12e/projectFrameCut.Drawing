@@ -37,7 +37,12 @@ public sealed class ColorGlyphCanvasElement : VectorCanvasElement
             var e = new GlyphCanvasElement(glyph, _font.UnitsPerEm)
             {
                 FontSize = FontSize,
-                GlyphTransform = layer.Transform,
+                GlyphTransform = layer.GlyphTransform,
+                // COLR PaintGlyph supplies a clipped fill, not an outline.
+                // Keep the layer stroke-free even if GlyphCanvasElement's
+                // defaults are changed by a caller in the future.
+                StrokeThickness = 0f,
+                StrokeA = 0f,
             };
             if (layer.Brush is SolidColorBrush solid)
             {
@@ -48,13 +53,16 @@ public sealed class ColorGlyphCanvasElement : VectorCanvasElement
             else
             {
                 e.WithFill(ushort.MaxValue, ushort.MaxValue, ushort.MaxValue, 1f);
-                VectorGradientBrush gradient = ToVectorGradient(layer.Brush, layer.Transform);
+                VectorGradientBrush gradient = ToVectorGradient(layer.Brush, layer.BrushTransform);
                 foreach (var segment in e.Draw())
                 {
                     if (segment is PolygonVectorSegment polygon)
                         segments.Add(new GradientPolygonVectorSegment
                         {
-                            Points = polygon.Points, Holes = polygon.Holes, Gradient = gradient,
+                            Points = polygon.Points,
+                            AdditionalContours = polygon.AdditionalContours,
+                            Holes = polygon.Holes,
+                            Gradient = gradient,
                             Opacity = Opacity, FillA = 1f,
                         });
                 }

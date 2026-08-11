@@ -137,6 +137,15 @@ namespace projectFrameCut.Drawing.Vector
         public required Point[] Points { get; init; }
 
         /// <summary>
+        /// Optional additional closed contours that belong to the same path.
+        /// They are combined with <see cref="Points"/> using the non-zero
+        /// winding rule and retain their original directions. This is required
+        /// for font outlines, whose overlapping strokes and counters cannot be
+        /// represented reliably as an inferred outer polygon plus holes.
+        /// </summary>
+        public Point[][]? AdditionalContours { get; init; }
+
+        /// <summary>
         /// Optional hole polygons. When set, all edges (outer + holes) are
         /// rendered together using the non-zero winding rule. Holes should be
         /// wound in the opposite direction to the outer polygon so that their
@@ -145,15 +154,65 @@ namespace projectFrameCut.Drawing.Vector
         public Point[][]? Holes { get; init; }
     }
 
+    /// <summary>The geometry used to calculate a gradient position.</summary>
     public enum VectorGradientKind { Linear, Radial, Sweep }
+
+    /// <summary>How colours outside the first and last stops are produced.</summary>
     public enum VectorGradientExtendMode { Pad, Repeat, Reflect }
-    public readonly record struct VectorGradientStop(float Offset, ushort R, ushort G, ushort B, float A);
+
+    /// <summary>How progress between two adjacent colour stops is eased.</summary>
+    public enum VectorGradientInterpolationMode
+    {
+        Linear,
+        SmoothStep,
+        SmootherStep,
+        Discrete,
+    }
+
+    /// <summary>The colour space in which adjacent stop colours are mixed.</summary>
+    public enum VectorGradientColorSpace
+    {
+        /// <summary>Mix the encoded channel values directly. This preserves the original behaviour.</summary>
+        SRgb,
+        /// <summary>Convert sRGB channels to linear light before mixing them.</summary>
+        LinearRgb,
+    }
+
+    /// <summary>How alpha participates in colour interpolation.</summary>
+    public enum VectorGradientAlphaMode
+    {
+        /// <summary>Interpolate colour and alpha independently.</summary>
+        Straight,
+        /// <summary>Interpolate alpha-premultiplied colours, avoiding fringes around transparent stops.</summary>
+        Premultiplied,
+    }
+
+    /// <summary>A colour stop within a gradient.</summary>
+    /// <param name="Offset">Position along the gradient. Stops must be ordered by this value.</param>
+    /// <param name="R">Red channel (0..65535).</param>
+    /// <param name="G">Green channel (0..65535).</param>
+    /// <param name="B">Blue channel (0..65535).</param>
+    /// <param name="A">Alpha (0.0 = transparent, 1.0 = opaque).</param>
+    public readonly record struct VectorGradientStop(float Offset, ushort R, ushort G, ushort B, float A)
+    {
+        /// <summary>
+        /// The point between this stop and the next at which their colours are mixed equally.
+        /// Values are relative to that interval; 0.5 gives the usual symmetrical transition.
+        /// </summary>
+        public float Midpoint { get; init; } = 0.5f;
+    }
 
     /// <summary>A gradient in the same local coordinate space as its polygon.</summary>
     public sealed record VectorGradientBrush
     {
         public required VectorGradientKind Kind { get; init; }
         public VectorGradientExtendMode ExtendMode { get; init; }
+        /// <summary>Controls the easing applied within each pair of adjacent stops.</summary>
+        public VectorGradientInterpolationMode InterpolationMode { get; init; }
+        /// <summary>Controls whether colour channels are mixed as encoded sRGB or in linear light.</summary>
+        public VectorGradientColorSpace ColorSpace { get; init; }
+        /// <summary>Controls whether transparent stop colours are premultiplied during interpolation.</summary>
+        public VectorGradientAlphaMode AlphaMode { get; init; }
         public required VectorGradientStop[] Stops { get; init; }
         public float X0 { get; init; } public float Y0 { get; init; }
         public float X1 { get; init; } public float Y1 { get; init; }
@@ -162,10 +221,12 @@ namespace projectFrameCut.Drawing.Vector
         public float StartAngle { get; init; } public float EndAngle { get; init; }
     }
 
-    /// <summary>A polygon whose fill is evaluated from a COLR-compatible gradient.</summary>
+    /// <summary>A polygon whose fill is produced by a gradient.</summary>
     public record GradientPolygonVectorSegment : PolygonVectorSegment
     {
+        /// <summary>The gradient used instead of the inherited solid fill colour.</summary>
         public required VectorGradientBrush Gradient { get; init; }
+        /// <summary>Opacity applied to the complete gradient after stop alpha interpolation.</summary>
         public float Opacity { get; init; } = 1f;
     }
 

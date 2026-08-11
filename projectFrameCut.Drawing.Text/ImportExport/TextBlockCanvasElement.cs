@@ -93,6 +93,23 @@ public sealed class TextBlockCanvasElement : VectorCanvasElement
                 X3 = s.X3 + dx, Y3 = s.Y3 + dy,
             },
             ArcVectorSegment s => s with { X = s.X + dx, Y = s.Y + dy },
+            // Keep the derived type before PolygonVectorSegment. Otherwise the
+            // record "with" expression narrows a gradient polygon to a plain
+            // polygon and silently discards its gradient brush.
+            GradientPolygonVectorSegment s => s with
+            {
+                Points = OffsetPoints(s.Points, dx, dy),
+                Holes = s.Holes?.Select(h => OffsetPoints(h, dx, dy)).ToArray(),
+                Gradient = s.Gradient with
+                {
+                    X0 = s.Gradient.X0 + dx,
+                    Y0 = s.Gradient.Y0 + dy,
+                    X1 = s.Gradient.X1 + dx,
+                    Y1 = s.Gradient.Y1 + dy,
+                    X2 = s.Gradient.X2 + dx,
+                    Y2 = s.Gradient.Y2 + dy,
+                },
+            },
             PolygonVectorSegment s => s with
             {
                 Points = OffsetPoints(s.Points, dx, dy),

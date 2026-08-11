@@ -47,6 +47,22 @@ internal static class UnicodeTextPipeline
                 catch (InvalidDataException) { }
             }
 
+            // A flag is encoded as two regional indicators.  Some colour emoji
+            // fonts contain those individual indicators but do not contain (or
+            // cannot compose) every flag sequence.  Do not render either
+            // indicator on its own in that case: use its ASCII country code
+            // letters instead, so an unsupported flag never becomes tofu.
+            if (TryGetRegionalIndicatorLetters(element, out string countryCode))
+            {
+                foreach (char letter in countryCode)
+                {
+                    Rune letterRune = new(letter);
+                    var (font, glyph) = ResolveGlyph(letterRune, primary, fallbacks);
+                    result.Add(new(letter.ToString(), start, element.Length, letterRune, font, glyph, null));
+                }
+                continue;
+            }
+
             foreach (Rune rune in element.EnumerateRunes())
             {
                 // Presentation/joining/tag controls have no standalone visual fallback.
@@ -68,22 +84,44 @@ internal static class UnicodeTextPipeline
                     catch (ObjectDisposedException) { }
                     catch (InvalidDataException) { }
                 }
-                FontFace resolved = primary;
-                ushort glyph = primary.GetGlyphIndex(rune);
-                if (glyph == 0)
-                {
-                    foreach (FontFace fb in fallbacks)
-                    {
-                        if (fb is null || ReferenceEquals(fb, primary)) continue;
-                        glyph = fb.GetGlyphIndex(rune);
-                        if (glyph != 0) { resolved = fb; break; }
-                    }
-                }
+                var (resolved, glyph) = ResolveGlyph(rune, primary, fallbacks);
                 if (glyph == 0)
                     System.Diagnostics.Debug.WriteLine($"[Emoji] No fallback glyph for U+{rune.Value:X} in cluster '{element}'; rendering .notdef from '{primary.FamilyName}'.");
                 result.Add(new(rune.ToString(), start, element.Length, rune, resolved, glyph, null));
             }
         }
         return result;
+    }
+
+    private static bool TryGetRegionalIndicatorLetters(string textElement, out string countryCode)
+    {
+        countryCode = string.Empty;
+        Rune[] runes = textElement.EnumerateRunes().ToArray();
+        if (runes.Length != 2 || runes.Any(rune => rune.Value is < 0x1F1E6 or > 0x1F1FF))
+            return false;
+
+        countryCode = string.Create(2, runes, static (buffer, indicators) =>
+        {
+            buffer[0] = (char)('A' + indicators[0].Value - 0x1F1E6);
+            buffer[1] = (char)('A' + indicators[1].Value - 0x1F1E6);
+        });
+        return true;
+    }
+
+    private static (FontFace Font, ushort Glyph) ResolveGlyph(Rune rune, FontFace primary,
+        IEnumerable<FontFace> fallbacks)
+    {
+        ushort glyph = primary.GetGlyphIndex(rune);
+        if (glyph != 0)
+            return (primary, glyph);
+
+        foreach (FontFace fb in fallbacks)
+        {
+            if (fb is null || ReferenceEquals(fb, primary)) continue;
+            glyph = fb.GetGlyphIndex(rune);
+            if (glyph != 0)
+                return (fb, glyph);
+        }
+        return (primary, 0);
     }
 }

@@ -254,23 +254,38 @@ namespace projectFrameCut.Drawing.Vector.ImportExport
         {
             string id = "g" + Guid.NewGuid().ToString("N");
             var d = new StringBuilder(); AppendContourPath(d, s.Points, ox, oy, scaleX, scaleY);
+            if (s.AdditionalContours is not null)
+                foreach (var contour in s.AdditionalContours) AppendContourPath(d, contour, ox, oy, scaleX, scaleY);
             if (s.Holes is not null) foreach (var h in s.Holes) AppendContourPath(d, h, ox, oy, scaleX, scaleY);
+            var stroke = new StringBuilder();
+            if (s.Thickness > 0f && s.StrokeA > 0f)
+            {
+                stroke.Append($" stroke=\"{ColorToHex(s.StrokeR, s.StrokeG, s.StrokeB)}\"");
+                stroke.Append($" stroke-width=\"{Fmt(s.Thickness)}\"");
+                if (s.StrokeA < 1f) stroke.Append($" stroke-opacity=\"{Fmt(s.StrokeA)}\"");
+            }
+            if (s.Gradient.Stops.Length == 0 || s.Opacity <= 0f)
+                return $"<path fill-rule=\"nonzero\" d=\"{d}\" fill=\"none\"{stroke}/>";
+
             string spread = s.Gradient.ExtendMode switch
             { VectorGradientExtendMode.Repeat => "repeat", VectorGradientExtendMode.Reflect => "reflect", _ => "pad" };
+            string colorInterpolation = s.Gradient.ColorSpace == VectorGradientColorSpace.LinearRgb
+                ? "linearRGB"
+                : "sRGB";
             var stops = new StringBuilder();
             foreach (var stop in s.Gradient.Stops)
                 stops.Append($"<stop offset=\"{Fmt(stop.Offset * 100)}%\" stop-color=\"{ColorToHex(stop.R, stop.G, stop.B)}\" stop-opacity=\"{Fmt(stop.A * s.Opacity)}\"/>");
             string def;
             if (s.Gradient.Kind == VectorGradientKind.Linear)
-                def = $"<linearGradient id=\"{id}\" gradientUnits=\"userSpaceOnUse\" spreadMethod=\"{spread}\" x1=\"{Fmt(CX(s.Gradient.X0, ox, scaleX))}\" y1=\"{Fmt(CY(s.Gradient.Y0, oy, scaleY))}\" x2=\"{Fmt(CX(s.Gradient.X1, ox, scaleX))}\" y2=\"{Fmt(CY(s.Gradient.Y1, oy, scaleY))}\">{stops}</linearGradient>";
+                def = $"<linearGradient id=\"{id}\" gradientUnits=\"userSpaceOnUse\" spreadMethod=\"{spread}\" color-interpolation=\"{colorInterpolation}\" x1=\"{Fmt(CX(s.Gradient.X0, ox, scaleX))}\" y1=\"{Fmt(CY(s.Gradient.Y0, oy, scaleY))}\" x2=\"{Fmt(CX(s.Gradient.X1, ox, scaleX))}\" y2=\"{Fmt(CY(s.Gradient.Y1, oy, scaleY))}\">{stops}</linearGradient>";
             else if (s.Gradient.Kind == VectorGradientKind.Radial)
-                def = $"<radialGradient id=\"{id}\" gradientUnits=\"userSpaceOnUse\" spreadMethod=\"{spread}\" fx=\"{Fmt(CX(s.Gradient.X0, ox, scaleX))}\" fy=\"{Fmt(CY(s.Gradient.Y0, oy, scaleY))}\" fr=\"{Fmt(s.Gradient.Radius0 * scaleX)}\" cx=\"{Fmt(CX(s.Gradient.X1, ox, scaleX))}\" cy=\"{Fmt(CY(s.Gradient.Y1, oy, scaleY))}\" r=\"{Fmt(s.Gradient.Radius1 * scaleX)}\">{stops}</radialGradient>";
+                def = $"<radialGradient id=\"{id}\" gradientUnits=\"userSpaceOnUse\" spreadMethod=\"{spread}\" color-interpolation=\"{colorInterpolation}\" fx=\"{Fmt(CX(s.Gradient.X0, ox, scaleX))}\" fy=\"{Fmt(CY(s.Gradient.Y0, oy, scaleY))}\" fr=\"{Fmt(s.Gradient.Radius0 * scaleX)}\" cx=\"{Fmt(CX(s.Gradient.X1, ox, scaleX))}\" cy=\"{Fmt(CY(s.Gradient.Y1, oy, scaleY))}\" r=\"{Fmt(s.Gradient.Radius1 * scaleX)}\">{stops}</radialGradient>";
             else
             {
                 var first = s.Gradient.Stops[0];
-                return $"<path fill-rule=\"evenodd\" d=\"{d}\" fill=\"{ColorToHex(first.R, first.G, first.B)}\" fill-opacity=\"{Fmt(first.A * s.Opacity)}\"/>";
+                return $"<path fill-rule=\"nonzero\" d=\"{d}\" fill=\"{ColorToHex(first.R, first.G, first.B)}\" fill-opacity=\"{Fmt(first.A * s.Opacity)}\"{stroke}/>";
             }
-            return $"<defs>{def}</defs><path fill-rule=\"evenodd\" d=\"{d}\" fill=\"url(#{id})\"/>";
+            return $"<defs>{def}</defs><path fill-rule=\"nonzero\" d=\"{d}\" fill=\"url(#{id})\"{stroke}/>";
         }
 
         /// <summary>

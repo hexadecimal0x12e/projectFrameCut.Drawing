@@ -67,8 +67,10 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
     public ushort StrokeR { get; set; }
     public ushort StrokeG { get; set; }
     public ushort StrokeB { get; set; }
-    public float StrokeA { get; set; } = 1f;
-    public float StrokeThickness { get; set; } = 1f;
+    // Glyphs are normally filled outlines. A stroke must be explicitly requested
+    // through WithStroke; otherwise small glyphs receive an unintended extra rim.
+    public float StrokeA { get; set; }
+    public float StrokeThickness { get; set; }
 
     public ushort FillR { get; set; }
     public ushort FillG { get; set; }
@@ -156,10 +158,10 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
         if (!hasFill && !hasStroke && !_showEmBox)
             return _cached = [];
 
-        // Flatten all contours into polygons using the same subdivision.
-        // Do not infer holes from winding alone: many fonts (especially CFF and
-        // some converted outlines) do not preserve the expected outer/hole
-        // direction consistently, which turns counters like "o" or "口" solid.
+        // Preserve every source contour and its direction. OpenType glyphs use
+        // non-zero winding: a glyph may contain both counters and intentional
+        // overlapping filled contours, which cannot be recovered reliably from
+        // a geometric outer/hole containment hierarchy.
         var flattenedContours = new List<Point[]>();
         foreach (var sourceContour in _glyph.Contours)
         {
@@ -178,94 +180,6 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
 
         if (flattenedContours.Count == 0)
             return _cached = [];
-
-        int contourCount = flattenedContours.Count;
-        var absoluteAreas = new float[contourCount];
-        var nestingDepths = new int[contourCount];
-        var holeParentIndices = new int[contourCount];
-        var minXs = new float[contourCount];
-        var minYs = new float[contourCount];
-        var maxXs = new float[contourCount];
-        var maxYs = new float[contourCount];
-        Array.Fill(holeParentIndices, -1);
-
-        for (int i = 0; i < contourCount; i++)
-        {
-            absoluteAreas[i] = MathF.Abs(SignedArea(flattenedContours[i]));
-            GetBounds(flattenedContours[i], out minXs[i], out minYs[i], out maxXs[i], out maxYs[i]);
-        }
-
-        for (int i = 0; i < contourCount; i++)
-        {
-            int depth = 0;
-
-            for (int j = 0; j < contourCount; j++)
-            {
-                if (i == j || absoluteAreas[j] <= absoluteAreas[i])
-                    continue;
-
-                if (!BoundsContain(minXs[j], minYs[j], maxXs[j], maxYs[j], minXs[i], minYs[i], maxXs[i], maxYs[i]))
-                    continue;
-
-                if (IsContourContained(flattenedContours[i], flattenedContours[j]))
-                    depth++;
-            }
-
-            nestingDepths[i] = depth;
-        }
-
-        for (int i = 0; i < contourCount; i++)
-        {
-            if ((nestingDepths[i] & 1) == 0)
-                continue;
-
-            int parentDepth = nestingDepths[i] - 1;
-            float bestParentArea = float.MaxValue;
-
-            for (int j = 0; j < contourCount; j++)
-            {
-                if (i == j || nestingDepths[j] != parentDepth || absoluteAreas[j] <= absoluteAreas[i])
-                    continue;
-
-                if (!BoundsContain(minXs[j], minYs[j], maxXs[j], maxYs[j], minXs[i], minYs[i], maxXs[i], maxYs[i]))
-                    continue;
-
-                if (IsContourContained(flattenedContours[i], flattenedContours[j]) && absoluteAreas[j] < bestParentArea)
-                {
-                    bestParentArea = absoluteAreas[j];
-                    holeParentIndices[i] = j;
-                }
-            }
-        }
-
-        var holesByOuter = new List<Point[]>[contourCount];
-        for (int i = 0; i < contourCount; i++)
-            holesByOuter[i] = [];
-
-        for (int i = 0; i < contourCount; i++)
-        {
-            int parentIndex = holeParentIndices[i];
-            if (parentIndex >= 0)
-            {
-                var hole = flattenedContours[i];
-                float holeArea = SignedArea(hole);
-                float parentArea = SignedArea(flattenedContours[parentIndex]);
-
-                if (MathF.Sign(holeArea) == MathF.Sign(parentArea))
-                {
-                    // Same winding as parent: this is an overlapping filled stroke, not a
-                    // counter/hole. Fonts like Source Han Serif encode stroke intersections as
-                    // separate same-wound contours that overlap; forcing a reversal would punch
-                    // them as holes and leave white gaps at stroke intersections.
-                    // Promote to outer so the fill loop renders it as an independent filled region.
-                    nestingDepths[i] = 0;
-                }
-                else
-                {
-                    holesByOuter[parentIndex].Add(hole);
-                }
-            }
-        }
 
         var segments = new List<VectorSegment>();
 
@@ -290,42 +204,32 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
             });
         }
 
-        // Fill: every outer contour (and promoted same-winding inner contours) gets
-        // its own fill segment. Holes are attached only when the inner contour has
-        // opposite winding from its parent (the standard typographic convention for
-        // counter shapes). Same-winding inner contours are overlapping filled strokes
-        // (common in CFF/CJK fonts) and are rendered as independent fills instead of
-        // being punched as holes — which would create white gaps at stroke intersections.
         if (hasFill)
         {
-            for (int i = 0; i < contourCount; i++)
+            segments.Add(new PolygonVectorSegment
             {
-                if ((nestingDepths[i] & 1) != 0)
-                    continue;
-
-                segments.Add(new PolygonVectorSegment
-                {
-                    Points = flattenedContours[i],
-                    Holes = holesByOuter[i].Count > 0 ? holesByOuter[i].ToArray() : null,
-                    FillR = FillR,
-                    FillG = FillG,
-                    FillB = FillB,
-                    FillA = FillA,
-                    Thickness = 0,
-                    StrokeA = 0f,
-                });
-            }
+                Points = flattenedContours[0],
+                AdditionalContours = flattenedContours.Count > 1
+                    ? flattenedContours.Skip(1).ToArray()
+                    : null,
+                FillR = FillR,
+                FillG = FillG,
+                FillB = FillB,
+                FillA = FillA,
+                Thickness = 0,
+                StrokeA = 0f,
+            });
         }
 
-        // Stroke: EVERY contour (outer + holes) as individual polygons,
-        // using the exact same flattened vertices as the fill — no gaps, no seams.
+        // Stroke every source contour individually, using the same flattened
+        // vertices as the fill path.
         if (hasStroke)
         {
-            for (int i = 0; i < contourCount; i++)
+            foreach (Point[] contour in flattenedContours)
             {
                 segments.Add(new PolygonVectorSegment
                 {
-                    Points = flattenedContours[i],
+                    Points = contour,
                     FillA = 0f,
                     Thickness = StrokeThickness,
                     StrokeR = StrokeR,
@@ -430,119 +334,6 @@ public sealed class GlyphCanvasElement : VectorCanvasElement
         }
 
         return result;
-    }
-
-    /// <summary>Compute signed area of a polygon in Y-down coordinates.</summary>
-    private static float SignedArea(ReadOnlySpan<Point> pts)
-    {
-        float area = 0f;
-        for (int i = 0; i < pts.Length; i++)
-        {
-            int j = (i + 1) % pts.Length;
-            area += pts[i].X * pts[j].Y - pts[j].X * pts[i].Y;
-        }
-        return area * 0.5f;
-    }
-
-    private static bool PointInPolygon(Point point, ReadOnlySpan<Point> polygon)
-    {
-        bool inside = false;
-        float px = point.X;
-        float py = point.Y;
-
-        for (int i = 0, j = polygon.Length - 1; i < polygon.Length; j = i++)
-        {
-            float xi = polygon[i].X;
-            float yi = polygon[i].Y;
-            float xj = polygon[j].X;
-            float yj = polygon[j].Y;
-
-            bool crosses = ((yi > py) != (yj > py))
-                && (px < ((xj - xi) * (py - yi) / (yj - yi)) + xi);
-
-            if (crosses)
-                inside = !inside;
-        }
-
-        return inside;
-    }
-
-    private static bool IsContourContained(ReadOnlySpan<Point> candidate, ReadOnlySpan<Point> container)
-    {
-        bool sawInteriorPoint = false;
-
-        for (int i = 0; i < candidate.Length; i++)
-        {
-            if (PointOnPolygonBoundary(candidate[i], container))
-                continue;
-
-            if (!PointInPolygon(candidate[i], container))
-                return false;
-
-            sawInteriorPoint = true;
-        }
-
-        return sawInteriorPoint || candidate.Length > 0;
-    }
-
-    private static bool PointOnPolygonBoundary(Point point, ReadOnlySpan<Point> polygon)
-    {
-        for (int i = 0, j = polygon.Length - 1; i < polygon.Length; j = i++)
-        {
-            if (PointOnSegment(point, polygon[j], polygon[i]))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool PointOnSegment(Point point, Point a, Point b)
-    {
-        const float epsilon = 1e-6f;
-
-        float cross = (point.Y - a.Y) * (b.X - a.X) - (point.X - a.X) * (b.Y - a.Y);
-        if (MathF.Abs(cross) > epsilon)
-            return false;
-
-        float dot = (point.X - a.X) * (b.X - a.X) + (point.Y - a.Y) * (b.Y - a.Y);
-        if (dot < -epsilon)
-            return false;
-
-        float lengthSquared = (b.X - a.X) * (b.X - a.X) + (b.Y - a.Y) * (b.Y - a.Y);
-        if (dot - lengthSquared > epsilon)
-            return false;
-
-        return true;
-    }
-
-    private static void GetBounds(ReadOnlySpan<Point> polygon, out float minX, out float minY, out float maxX, out float maxY)
-    {
-        minX = maxX = polygon[0].X;
-        minY = maxY = polygon[0].Y;
-
-        for (int i = 1; i < polygon.Length; i++)
-        {
-            var point = polygon[i];
-            if (point.X < minX) minX = point.X;
-            if (point.X > maxX) maxX = point.X;
-            if (point.Y < minY) minY = point.Y;
-            if (point.Y > maxY) maxY = point.Y;
-        }
-    }
-
-    private static bool BoundsContain(
-        float outerMinX, float outerMinY, float outerMaxX, float outerMaxY,
-        float innerMinX, float innerMinY, float innerMaxX, float innerMaxY)
-        => innerMinX >= outerMinX
-        && innerMaxX <= outerMaxX
-        && innerMinY >= outerMinY
-        && innerMaxY <= outerMaxY;
-
-    private static Point[] ReverseContour(ReadOnlySpan<Point> contour)
-    {
-        var reversed = contour.ToArray();
-        Array.Reverse(reversed);
-        return reversed;
     }
 
     /// <summary>
