@@ -441,7 +441,10 @@ public sealed class FontFace : IDisposable
     {
         glyphIndex = 0; layers = []; shapedAdvanceWidth = 0;
         EnsureEmojiTables();
-        if (_colorEmoji is null || string.IsNullOrEmpty(textElement)) return false;
+        ColorEmojiTables? colorEmoji = _colorEmoji;
+        GsubEmojiTable? emojiGsub = _emojiGsub;
+        GposEmojiTable? emojiGpos = _emojiGpos;
+        if (colorEmoji is null || string.IsNullOrEmpty(textElement)) return false;
 
         var glyphs = new List<ushort>();
         Rune? pending = null;
@@ -469,7 +472,7 @@ public sealed class FontFace : IDisposable
 
         ushort[] shaped;
         if (glyphs.Count == 1) shaped = [glyphs[0]];
-        else if (_emojiGsub is null || !_emojiGsub.TryShape(glyphs, out shaped))
+        else if (emojiGsub is null || !emojiGsub.TryShape(glyphs, out shaped))
         {
             Debug.WriteLine($"[Emoji] GSUB could not compose cluster '{textElement}', input glyphs=[{string.Join(",", glyphs)}].");
             return false;
@@ -478,11 +481,11 @@ public sealed class FontFace : IDisposable
         var combined = new List<ColorGlyphLayer>();
         float cursor = 0;
         int[] baseAdvances = shaped.Select(g => (int)GetVariedAdvanceWidth(g)).ToArray();
-        GlyphPosition[] positions = _emojiGpos?.Position(shaped, baseAdvances) ?? new GlyphPosition[shaped.Length];
+        GlyphPosition[] positions = emojiGpos?.Position(shaped, baseAdvances) ?? new GlyphPosition[shaped.Length];
         for (int shapedIndex = 0; shapedIndex < shaped.Length; shapedIndex++)
         {
             ushort shapedGlyph = shaped[shapedIndex];
-            if (!_colorEmoji.TryGetLayers(shapedGlyph, foreground, out var glyphLayers))
+            if (!colorEmoji.TryGetLayers(shapedGlyph, foreground, out var glyphLayers))
             {
                 Debug.WriteLine($"[Emoji] COLR has no renderable paint graph for cluster '{textElement}', glyph={shapedGlyph}.");
                 return false;
@@ -512,13 +515,14 @@ public sealed class FontFace : IDisposable
     internal bool TryGetColorLayers(ushort glyphIndex, ColorValue foreground, out ColorGlyphLayer[] layers)
     {
         EnsureEmojiTables();
-        if (_colorEmoji is not null) return _colorEmoji.TryGetLayers(glyphIndex, foreground, out layers);
+        ColorEmojiTables? colorEmoji = _colorEmoji;
+        if (colorEmoji is not null) return colorEmoji.TryGetLayers(glyphIndex, foreground, out layers);
         layers = []; return false;
     }
 
     private void EnsureEmojiTables()
     {
-        if (_emojiTablesInitialized) return;
+        if (Volatile.Read(ref _emojiTablesInitialized)) return;
         lock (_stateLock)
         {
             if (_emojiTablesInitialized) return;
@@ -529,7 +533,7 @@ public sealed class FontFace : IDisposable
                 _emojiGsub = new GsubEmojiTable(sfnt.GetTableData("GSUB").ToArray());
             if (sfnt.HasTable("GPOS"))
                 _emojiGpos = new GposEmojiTable(sfnt.GetTableData("GPOS").ToArray());
-            _emojiTablesInitialized = true;
+            Volatile.Write(ref _emojiTablesInitialized, true);
         }
     }
 
@@ -807,7 +811,7 @@ public sealed class FontFace : IDisposable
             _colorEmoji = null;
             _emojiGsub = null;
             _emojiGpos = null;
-            _emojiTablesInitialized = false;
+            Volatile.Write(ref _emojiTablesInitialized, false);
         }
     }
 
@@ -830,7 +834,7 @@ public sealed class FontFace : IDisposable
                 _colorEmoji = null;
                 _emojiGsub = null;
                 _emojiGpos = null;
-                _emojiTablesInitialized = false;
+                Volatile.Write(ref _emojiTablesInitialized, false);
             }
         }
     }

@@ -17,6 +17,7 @@ internal sealed class ColorEmojiTables
 {
     private readonly byte[] _colr;
     private readonly ColorValue[] _palette;
+    private readonly object _cacheLock = new();
     private readonly Dictionary<(ushort GlyphId, ColorValue Foreground), ColorGlyphLayer[]> _cache = [];
     private readonly HashSet<ushort> _resolving = [];
 
@@ -30,27 +31,30 @@ internal sealed class ColorEmojiTables
 
     public bool TryGetLayers(ushort glyphId, ColorValue foreground, out ColorGlyphLayer[] layers)
     {
-        var cacheKey = (glyphId, foreground);
-        if (_cache.TryGetValue(cacheKey, out layers!)) return layers.Length != 0;
-        if (!_resolving.Add(glyphId)) { layers = []; return false; }
-        var result = new List<ColorGlyphLayer>();
-        try
+        lock (_cacheLock)
         {
-            ushort version = U16(_colr, 0);
-            // Modern emoji fonts (including Segoe UI Emoji) intentionally
-            // carry a COLR v0 flat-colour fallback alongside their richer v1
-            // paint graph for the very same glyph. Prefer v1 whenever it is
-            // present; v0 is only the compatibility fallback.
-            if (version >= 1)
-                TryV1(glyphId, foreground, result);
-            if (result.Count == 0)
-                TryV0(glyphId, foreground, result);
+            var cacheKey = (glyphId, foreground);
+            if (_cache.TryGetValue(cacheKey, out layers!)) return layers.Length != 0;
+            if (!_resolving.Add(glyphId)) { layers = []; return false; }
+            var result = new List<ColorGlyphLayer>();
+            try
+            {
+                ushort version = U16(_colr, 0);
+                // Modern emoji fonts (including Segoe UI Emoji) intentionally
+                // carry a COLR v0 flat-colour fallback alongside their richer v1
+                // paint graph for the very same glyph. Prefer v1 whenever it is
+                // present; v0 is only the compatibility fallback.
+                if (version >= 1)
+                    TryV1(glyphId, foreground, result);
+                if (result.Count == 0)
+                    TryV0(glyphId, foreground, result);
+            }
+            catch { result.Clear(); }
+            finally { _resolving.Remove(glyphId); }
+            layers = result.ToArray();
+            _cache[cacheKey] = layers;
+            return layers.Length != 0;
         }
-        catch { result.Clear(); }
-        finally { _resolving.Remove(glyphId); }
-        layers = result.ToArray();
-        _cache[cacheKey] = layers;
-        return layers.Length != 0;
     }
 
     private bool TryV0(ushort glyphId, ColorValue foreground, List<ColorGlyphLayer> output)
